@@ -9,6 +9,11 @@ features:
   cache_dir: "features/cache"
   device: "cuda"
 
+sononet:
+  dir: "/vol/biomedic3/bkainz/sononet_logs"
+  conf_threshold: 0.5
+  cache_dir: "features/cache_4ch"
+
 training:
   seed: 42
   mlp_epochs: 100

@@ -236,6 +236,7 @@ def main() -> None:
     # 1. Data loading                                                      #
     # ------------------------------------------------------------------ #
     print("\n[1/4] Loading data...")
+    sononet_cfg = config.get("sononet", {})
     train_loader, val_loader, test_loader, split_info = get_dataloaders(
         csv_path=config["data"]["csv_path"],
         n_frames=config["data"]["n_frames"],
@@ -243,6 +244,8 @@ def main() -> None:
         num_workers=config["data"]["num_workers"],
         split=config["data"]["split"],
         seed=seed,
+        sononet_dir=sononet_cfg.get("dir"),
+        conf_threshold=sononet_cfg.get("conf_threshold", 0.5),
     )
     print(
         f"  Subjects — train: {len(split_info['train_subjects'])}, "
@@ -256,15 +259,10 @@ def main() -> None:
     print("\n[2/4] Extracting DINOv2 features...")
     dinov2 = load_dinov2(device)
 
-    train_features = extract_features(
-        train_loader, dinov2, device, config["features"]["cache_dir"]
-    )
-    val_features = extract_features(
-        val_loader, dinov2, device, config["features"]["cache_dir"]
-    )
-    test_features = extract_features(
-        test_loader, dinov2, device, config["features"]["cache_dir"]
-    )
+    cache_dir = sononet_cfg.get("cache_dir") or config["features"]["cache_dir"]
+    train_features = extract_features(train_loader, dinov2, device, cache_dir)
+    val_features = extract_features(val_loader, dinov2, device, cache_dir)
+    test_features = extract_features(test_loader, dinov2, device, cache_dir)
     print(
         f"  Videos — train: {len(train_features)}, "
         f"val: {len(val_features)}, test: {len(test_features)}"

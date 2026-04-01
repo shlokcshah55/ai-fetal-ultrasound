@@ -46,18 +46,18 @@ class VideoDataset(Dataset):
         video_path: str = record["video_path"]
         label: int = int(record["label"])
 
-        frames = self._load_frames(video_path)
+        frames = self._load_frames(video_path, record.get("frame_indices"))
         label_tensor = torch.tensor(label, dtype=torch.long)
         return frames, label_tensor, video_path
 
-    def _load_frames(self, video_path: str) -> torch.Tensor:
+    def _load_frames(self, video_path: str, frame_indices: list[int] | None = None) -> torch.Tensor:
         cap = cv2.VideoCapture(video_path)
         try:
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            if total_frames <= 0:
-                total_frames = 1
-
-            frame_indices = np.linspace(0, total_frames - 1, self.n_frames, dtype=int)
+            if frame_indices is None:
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if total_frames <= 0:
+                    total_frames = 1
+                frame_indices = np.linspace(0, total_frames - 1, self.n_frames, dtype=int)
 
             frame_tensors: list[torch.Tensor] = []
             for fi in frame_indices:
@@ -84,6 +84,8 @@ def get_dataloaders(
     num_workers: int = 4,
     split: list[float] | None = None,
     seed: int = 42,
+    sononet_dir: str | None = None,
+    conf_threshold: float = 0.5,
 ) -> tuple[DataLoader, DataLoader, DataLoader, dict[str, list[str]]]:
     """Build train/val/test DataLoaders with subject-level splits.
 
@@ -100,6 +102,25 @@ def get_dataloaders(
     missing = required_cols - set(df.columns)
     if missing:
         raise ValueError(f"CSV missing columns: {missing}")
+
+    if sononet_dir is not None:
+        sononet_path = Path(sononet_dir)
+
+        def _compute_frame_indices(row: dict) -> list[int] | None:
+            pk_path = sononet_path / (Path(row["video_path"]).stem + ".pk")
+            if not pk_path.exists():
+                return None
+            pk_df = pd.read_pickle(pk_path)
+            mask = (pk_df["label"] == "4ch") & (pk_df["probability"] >= conf_threshold)
+            qualifying = pk_df.loc[mask, "frame_number"].values
+            if len(qualifying) == 0:
+                return None
+            return qualifying.tolist()
+
+        n_before = len(df)
+        df["frame_indices"] = df.apply(_compute_frame_indices, axis=1)
+        df = df[df["frame_indices"].notna()].reset_index(drop=True)
+        print(f"  SonoNet filter: kept {len(df)}/{n_before} videos with qualifying 4CH frames")
 
     groups = df["subject_id"].values
 
@@ -128,7 +149,10 @@ def get_dataloaders(
     assert val_subjects.isdisjoint(test_subjects), "Subject leakage: val ∩ test is non-empty"
 
     def _to_records(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
-        return dataframe[["video_path", "label", "subject_id"]].to_dict("records")
+        cols = ["video_path", "label", "subject_id"]
+        if "frame_indices" in dataframe.columns:
+            cols.append("frame_indices")
+        return dataframe[cols].to_dict("records")
 
     train_records = _to_records(df_train)
     val_records = _to_records(df_val)
