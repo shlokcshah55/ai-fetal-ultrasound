@@ -1,0 +1,17 @@
+data:
+  csv_path: "data/labels.csv"
+  n_frames: 16
+  batch_size: 32
+  num_workers: 4
+  split: [0.8, 0.1, 0.1]
+
+features:
+  cache_dir: "features/cache"
+  device: "cuda"
+
+training:
+  seed: 42
+  mlp_epochs: 100
+  mlp_lr: 1e-3
+  mlp_weight_decay: 1e-4
+  early_stopping_patience: 10

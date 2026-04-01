@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+
+def load_dinov2(device: torch.device) -> nn.Module:
+    """Load DINOv2 ViT-B/14 from torch.hub, frozen in eval mode.
+
+    The backbone is set to eval() and all parameters have requires_grad=False.
+    An assertion verifies no parameters are trainable — this acts as a
+    circuit breaker against accidental fine-tuning.
+
+    Args:
+        device: Target device for the model.
+
+    Returns:
+        Frozen DINOv2 model.
+    """
+    model = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
+    model.eval()
+    for param in model.parameters():
+        param.requires_grad_(False)
+
+    assert not any(p.requires_grad for p in model.parameters()), (
+        "DINOv2 backbone has trainable parameters — aborting. "
+        "The frozen backbone constraint has been violated."
+    )
+
+    model = model.to(device)
+    return model
+
+
+def _get_cls_token(model: nn.Module, frames: torch.Tensor) -> torch.Tensor:
+    """Extract CLS token embeddings from DINOv2.
+
+    Handles both dict-returning and tensor-returning forward methods
+    across different DINOv2 hub versions.
+
+    Args:
+        model: Frozen DINOv2 model.
+        frames: Input tensor of shape (N, 3, 224, 224).
+
+    Returns:
+        CLS token embeddings of shape (N, 768).
+    """
+    try:
+        # Preferred: explicit CLS token extraction
+        out = model.forward_features(frames)
+        if isinstance(out, dict):
+            return out["x_norm_clstoken"]
+        # forward_features may return the full token sequence; take index 0
+        return out[:, 0, :]
+    except (AttributeError, KeyError):
+        # Fallback: default forward (returns CLS token directly in most versions)
+        out = model(frames)
+        if isinstance(out, dict):
+            return out["x_norm_clstoken"]
+        return out
+
+
+def extract_features(
+    dataloader: DataLoader,
+    model: nn.Module,
+    device: torch.device,
+    cache_dir: str,
+) -> dict[str, tuple[np.ndarray, int]]:
+    """Extract and cache DINOv2 CLS-token features for all videos.
+
+    Features are saved to disk as .npy files keyed by the MD5 hash of the
+    video path. On subsequent runs, cached files are loaded without re-running
+    inference.
+
+    Args:
+        dataloader: DataLoader whose dataset returns (frames, label, video_path).
+        model: Frozen DINOv2 model (output of load_dinov2).
+        device: Device to run inference on.
+        cache_dir: Directory for caching .npy feature files.
+
+    Returns:
+        Dict mapping video_path → (features_array of shape (N, 768), label).
+    """
+    cache_path = Path(cache_dir)
+    cache_path.mkdir(parents=True, exist_ok=True)
+
+    results: dict[str, tuple[np.ndarray, int]] = {}
+    use_amp = device.type == "cuda"
+
+    for batch in tqdm(dataloader, desc="Extracting features"):
+        frames_batch, labels_batch, video_paths = batch
+        # frames_batch: (B, N, 3, 224, 224)
+        # labels_batch: (B,)
+        # video_paths: list of B strings
+
+        batch_size = frames_batch.shape[0]
+
+        for i in range(batch_size):
+            video_path = video_paths[i]
+            label = int(labels_batch[i].item())
+
+            cache_key = hashlib.md5(video_path.encode()).hexdigest()
+            feat_file = cache_path / f"{cache_key}.npy"
+            label_file = cache_path / f"{cache_key}_label.npy"
+
+            if feat_file.exists() and label_file.exists():
+                features = np.load(feat_file)
+                cached_label = int(np.load(label_file))
+                results[video_path] = (features, cached_label)
+                continue
+
+            # (N, 3, 224, 224) → pass all frames as a batch through DINOv2
+            frames = frames_batch[i].to(device)  # (N, 3, 224, 224)
+
+            with torch.no_grad():
+                if use_amp:
+                    with torch.cuda.amp.autocast():
+                        embeddings = _get_cls_token(model, frames)
+                else:
+                    embeddings = _get_cls_token(model, frames)
+
+            # Cast to float32 — autocast may produce float16/bfloat16
+            # which numpy does not support
+            features = embeddings.float().cpu().numpy()  # (N, 768)
+
+            np.save(feat_file, features)
+            np.save(label_file, np.array(label, dtype=np.int64))
+            results[video_path] = (features, label)
+
+    return results
