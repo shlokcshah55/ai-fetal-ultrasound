@@ -94,11 +94,11 @@ def extract_features(
 
     for batch in tqdm(dataloader, desc="Extracting features"):
         frames_batch, labels_batch, video_paths = batch
-        # frames_batch: (B, N, 3, 224, 224)
+        # frames_batch: list of B tensors, each (N_i, 3, 224, 224) — N_i may vary
         # labels_batch: (B,)
         # video_paths: list of B strings
 
-        batch_size = frames_batch.shape[0]
+        batch_size = len(frames_batch)
 
         for i in range(batch_size):
             video_path = video_paths[i]

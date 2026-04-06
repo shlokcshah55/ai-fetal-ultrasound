@@ -13,6 +13,20 @@ from torchvision import transforms
 from sklearn.model_selection import GroupShuffleSplit
 
 
+def collate_variable_frames(
+    batch: list[tuple[torch.Tensor, torch.Tensor, str]],
+) -> tuple[list[torch.Tensor], torch.Tensor, list[str]]:
+    """Collate videos with variable numbers of frames into a batch.
+
+    Returns frames as a list of tensors rather than stacking them, since
+    different videos may have different numbers of qualifying 4CH frames.
+    """
+    frames_list = [item[0] for item in batch]
+    labels = torch.stack([item[1] for item in batch])
+    paths = [item[2] for item in batch]
+    return frames_list, labels, paths
+
+
 _TRANSFORM = transforms.Compose([
     transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
     transforms.CenterCrop(224),
@@ -182,6 +196,7 @@ def get_dataloaders(
         num_workers=num_workers,
         pin_memory=True,
         drop_last=False,
+        collate_fn=collate_variable_frames,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -189,6 +204,7 @@ def get_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
+        collate_fn=collate_variable_frames,
     )
     test_loader = DataLoader(
         test_dataset,
@@ -196,6 +212,7 @@ def get_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
+        collate_fn=collate_variable_frames,
     )
 
     split_info: dict[str, list[str]] = {
