@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import pickle
 import numpy as np
 import pandas as pd
 import cv2
@@ -11,6 +13,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torchvision import transforms
 from sklearn.model_selection import GroupShuffleSplit
+from tqdm import tqdm
 
 
 def collate_variable_frames(
@@ -120,19 +123,42 @@ def get_dataloaders(
     if sononet_dir is not None:
         sononet_path = Path(sononet_dir)
 
-        def _compute_frame_indices(row: dict) -> list[int] | None:
-            pk_path = sononet_path / (Path(row["video_path"]).stem + ".pk")
-            if not pk_path.exists():
-                return None
-            pk_df = pd.read_pickle(pk_path)
-            mask = (pk_df["label"] == "4ch") & (pk_df["probability"] >= conf_threshold)
-            qualifying = pk_df.loc[mask, "frame_number"].values
-            if len(qualifying) == 0:
-                return None
-            return qualifying.tolist()
+        # Cache key based on sononet_dir and conf_threshold so it invalidates if either changes
+        cache_key = hashlib.md5(f"{sononet_dir}|{conf_threshold}".encode()).hexdigest()[:8]
+        cache_file = Path(csv_path).parent / f"sononet_cache_{cache_key}.pkl"
+
+        if cache_file.exists():
+            print(f"  Loading SonoNet frame indices from cache ({cache_file.name})...")
+            with open(cache_file, "rb") as f:
+                indices_map: dict[str, list[int]] = pickle.load(f)
+            df["frame_indices"] = df["video_path"].map(indices_map)
+        else:
+            print(f"  Scanning SonoNet .pk files (first run only, will be cached)...")
+
+            def _compute_frame_indices(video_path: str) -> list[int] | None:
+                pk_path = sononet_path / (Path(video_path).stem + ".pk")
+                if not pk_path.exists():
+                    return None
+                pk_df = pd.read_pickle(pk_path)
+                mask = (pk_df["label"] == "4ch") & (pk_df["probability"] >= conf_threshold)
+                qualifying = pk_df.loc[mask, "frame_number"].values
+                if len(qualifying) == 0:
+                    return None
+                return qualifying.tolist()
+
+            indices_map = {}
+            for video_path in tqdm(df["video_path"], desc="  Scanning .pk files"):
+                result = _compute_frame_indices(video_path)
+                if result is not None:
+                    indices_map[video_path] = result
+
+            with open(cache_file, "wb") as f:
+                pickle.dump(indices_map, f)
+            print(f"  Cached to {cache_file.name}")
+
+            df["frame_indices"] = df["video_path"].map(indices_map)
 
         n_before = len(df)
-        df["frame_indices"] = df.apply(_compute_frame_indices, axis=1)
         df = df[df["frame_indices"].notna()].reset_index(drop=True)
         print(f"  SonoNet filter: kept {len(df)}/{n_before} videos with qualifying 4CH frames")
 

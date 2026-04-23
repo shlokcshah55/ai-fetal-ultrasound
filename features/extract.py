@@ -37,6 +37,50 @@ def load_dinov2(device: torch.device) -> nn.Module:
     return model
 
 
+def load_cached_features(
+    video_paths: list[str],
+    cache_dir: str,
+) -> dict[str, tuple[np.ndarray, int]]:
+    """Load previously cached DINOv2 features from disk (no model inference).
+
+    This avoids decoding videos / loading frames. It expects that the cache
+    was populated earlier by `extract_features(...)` using the same cache_dir.
+
+    Args:
+        video_paths: List of video paths (strings) used to derive cache keys.
+        cache_dir: Directory containing cached .npy files.
+
+    Returns:
+        Dict mapping video_path → (features_array of shape (N, 768), label).
+    """
+    cache_path = Path(cache_dir)
+    results: dict[str, tuple[np.ndarray, int]] = {}
+
+    missing: list[str] = []
+    for video_path in video_paths:
+        cache_key = hashlib.md5(video_path.encode()).hexdigest()
+        feat_file = cache_path / f"{cache_key}.npy"
+        label_file = cache_path / f"{cache_key}_label.npy"
+
+        if not (feat_file.exists() and label_file.exists()):
+            missing.append(video_path)
+            continue
+
+        features = np.load(feat_file)
+        label = int(np.load(label_file))
+        results[video_path] = (features, label)
+
+    if missing:
+        preview = "\n".join(f"  - {p}" for p in missing[:10])
+        raise FileNotFoundError(
+            "Missing cached DINOv2 features for some videos. "
+            "Run extraction first (or use the correct --features-cache-dir).\n"
+            f"Missing count: {len(missing)} (showing up to 10)\n{preview}"
+        )
+
+    return results
+
+
 def _get_cls_token(model: nn.Module, frames: torch.Tensor) -> torch.Tensor:
     """Extract CLS token embeddings from DINOv2.
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import random
 import os
 from pathlib import Path
@@ -11,7 +12,7 @@ import yaml
 import joblib
 
 from data.dataset import get_dataloaders
-from features.extract import load_dinov2, extract_features
+from features.extract import load_dinov2, extract_features, load_cached_features
 from aggregation.pooling import mean_pool, max_pool, AttentionPooling, attention_pool
 from classifiers.linear_probe import get_logistic_regression, get_linear_svc
 from classifiers.knn import get_knn
@@ -220,15 +221,57 @@ def predict_attention_mlp(
     return np.array(y_true_list), np.array(y_proba_list)
 
 
-def main() -> None:
+def _video_paths_from_loader(loader) -> list[str]:
+    # Avoid iterating the loader (which would decode video frames).
+    dataset = getattr(loader, "dataset", None)
+    records = getattr(dataset, "records", None)
+    if not isinstance(records, list):
+        raise TypeError(
+            "Expected loader.dataset.records to be a list of dicts. "
+            "Cannot derive video paths without decoding videos."
+        )
+    return [r["video_path"] for r in records]
+
+
+def main(
+    config_path: str = "config.yaml",
+    *,
+    sononet_cache_only: bool = False,
+    extract_only: bool = False,
+    skip_extract: bool = False,
+    n_frames: int | None = None,
+    sononet_dir: str | None = None,
+    sononet_conf_threshold: float | None = None,
+    sononet_cache_dir: str | None = None,
+    features_cache_dir: str | None = None,
+    device_override: str | None = None,
+) -> None:
     repo_root = Path(__file__).parent
     os.chdir(repo_root)
 
-    config = load_config()
+    config = load_config(config_path)
     seed = config["training"]["seed"]
     set_seeds(seed)
 
-    device_str = config["features"]["device"]
+    if n_frames is not None:
+        config["data"]["n_frames"] = int(n_frames)
+
+    if sononet_dir is not None:
+        config.setdefault("sononet", {})
+        config["sononet"]["dir"] = sononet_dir
+
+    if sononet_conf_threshold is not None:
+        config.setdefault("sononet", {})
+        config["sononet"]["conf_threshold"] = float(sononet_conf_threshold)
+
+    if sononet_cache_dir is not None:
+        config.setdefault("sononet", {})
+        config["sononet"]["cache_dir"] = sononet_cache_dir
+
+    if features_cache_dir is not None:
+        config["features"]["cache_dir"] = features_cache_dir
+
+    device_str = device_override or config["features"]["device"]
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
@@ -253,20 +296,33 @@ def main() -> None:
         f"test: {len(split_info['test_subjects'])}"
     )
 
+    if sononet_cache_only:
+        print("\nSonoNet cache-only mode: done after caching/filtering (no DINO / training).")
+        return
+
     # ------------------------------------------------------------------ #
     # 2. Feature extraction                                                #
     # ------------------------------------------------------------------ #
-    print("\n[2/4] Extracting DINOv2 features...")
-    dinov2 = load_dinov2(device)
-
     cache_dir = sononet_cfg.get("cache_dir") or config["features"]["cache_dir"]
-    train_features = extract_features(train_loader, dinov2, device, cache_dir)
-    val_features = extract_features(val_loader, dinov2, device, cache_dir)
-    test_features = extract_features(test_loader, dinov2, device, cache_dir)
+    if skip_extract:
+        print("\n[2/4] Loading cached DINOv2 features (skip extract)...")
+        train_features = load_cached_features(_video_paths_from_loader(train_loader), cache_dir)
+        val_features = load_cached_features(_video_paths_from_loader(val_loader), cache_dir)
+        test_features = load_cached_features(_video_paths_from_loader(test_loader), cache_dir)
+    else:
+        print("\n[2/4] Extracting DINOv2 features...")
+        dinov2 = load_dinov2(device)
+        train_features = extract_features(train_loader, dinov2, device, cache_dir)
+        val_features = extract_features(val_loader, dinov2, device, cache_dir)
+        test_features = extract_features(test_loader, dinov2, device, cache_dir)
     print(
         f"  Videos — train: {len(train_features)}, "
         f"val: {len(val_features)}, test: {len(test_features)}"
     )
+
+    if extract_only:
+        print("\nExtract-only mode: done after feature caching (no training).")
+        return
 
     # ------------------------------------------------------------------ #
     # 3. Pre-pool for mean/max experiments                                 #
@@ -409,5 +465,78 @@ def _print_row(pooling: str, clf_name: str, metrics: dict) -> None:
     )
 
 
+def _cli() -> None:
+    parser = argparse.ArgumentParser(description="Run the DINOv2 baseline grid.")
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to config YAML (default: config.yaml).",
+    )
+    parser.add_argument(
+        "--sononet-cache-only",
+        action="store_true",
+        help="Only build/load SonoNet frame-index cache and filter dataset; exit before DINO/training.",
+    )
+    parser.add_argument(
+        "--extract-only",
+        action="store_true",
+        help="Run DINO feature extraction + caching; exit before training.",
+    )
+    parser.add_argument(
+        "--skip-extract",
+        action="store_true",
+        help="Skip DINO inference and load cached embeddings from the chosen cache dir.",
+    )
+    parser.add_argument(
+        "--n-frames",
+        type=int,
+        default=None,
+        help="Override config.data.n_frames (used only when SonoNet filtering is disabled).",
+    )
+    parser.add_argument(
+        "--sononet-dir",
+        default=None,
+        help="Override config.sononet.dir (enables SonoNet filtering if set).",
+    )
+    parser.add_argument(
+        "--sononet-conf-threshold",
+        type=float,
+        default=None,
+        help="Override config.sononet.conf_threshold (e.g. 0.3–0.7).",
+    )
+    parser.add_argument(
+        "--sononet-cache-dir",
+        default=None,
+        help="Override config.sononet.cache_dir (feature cache dir used when SonoNet filtering is enabled).",
+    )
+    parser.add_argument(
+        "--features-cache-dir",
+        default=None,
+        help="Override config.features.cache_dir (use a new dir when changing frame strategy).",
+    )
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="Override config.features.device (e.g. cuda or cpu).",
+    )
+    args = parser.parse_args()
+
+    if args.sononet_cache_only and args.extract_only:
+        raise SystemExit("Choose only one of --sononet-cache-only or --extract-only.")
+
+    main(
+        config_path=args.config,
+        sononet_cache_only=args.sononet_cache_only,
+        extract_only=args.extract_only,
+        skip_extract=args.skip_extract,
+        n_frames=args.n_frames,
+        sononet_dir=args.sononet_dir,
+        sononet_conf_threshold=args.sononet_conf_threshold,
+        sononet_cache_dir=args.sononet_cache_dir,
+        features_cache_dir=args.features_cache_dir,
+        device_override=args.device,
+    )
+
+
 if __name__ == "__main__":
-    main()
+    _cli()
