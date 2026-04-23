@@ -10,6 +10,7 @@ import pandas as pd
 import torch
 import yaml
 import joblib
+from tqdm import tqdm
 
 from data.dataset import get_dataloaders
 from features.extract import load_dinov2, extract_features, load_cached_features
@@ -130,7 +131,12 @@ def train_attention_mlp(
 
     from sklearn.metrics import roc_auc_score, accuracy_score
 
-    for epoch in range(config["training"]["mlp_epochs"]):
+    epoch_iter = tqdm(
+        range(config["training"]["mlp_epochs"]),
+        desc="Training attention+MLP",
+        unit="epoch",
+    )
+    for epoch in epoch_iter:
         # --- Training ---
         model.train()
         attention_head.train()
@@ -141,6 +147,7 @@ def train_attention_mlp(
 
         batch_size = 64
         total_loss = 0.0
+        n_steps = 0
         for start in range(0, len(indices), batch_size):
             batch_idx = indices[start : start + batch_size]
             if len(batch_idx) <= 1:
@@ -162,6 +169,7 @@ def train_attention_mlp(
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+            n_steps += 1
 
         # --- Validation ---
         model.eval()
@@ -180,6 +188,13 @@ def train_attention_mlp(
         except ValueError:
             val_pred = (val_proba >= 0.5).astype(int)
             val_auroc = float(accuracy_score(y_val_arr, val_pred))
+
+        avg_loss = total_loss / max(n_steps, 1)
+        epoch_iter.set_postfix(
+            loss=f"{avg_loss:.4f}",
+            val_auroc=f"{val_auroc:.4f}",
+            best=f"{best_val_auroc:.4f}",
+        )
 
         if val_auroc > best_val_auroc:
             best_val_auroc = val_auroc
@@ -231,6 +246,25 @@ def _video_paths_from_loader(loader) -> list[str]:
             "Cannot derive video paths without decoding videos."
         )
     return [r["video_path"] for r in records]
+
+
+def _sequential_loader(loader):
+    """Create a deterministic, non-sampling DataLoader over the same dataset.
+
+    This is important for feature extraction: we want to cover every video
+    exactly once (no weighted-sampler duplicates / omissions).
+    """
+    from torch.utils.data import DataLoader
+
+    return DataLoader(
+        loader.dataset,
+        batch_size=loader.batch_size,
+        shuffle=False,
+        num_workers=loader.num_workers,
+        pin_memory=loader.pin_memory,
+        drop_last=False,
+        collate_fn=loader.collate_fn,
+    )
 
 
 def main(
@@ -304,17 +338,23 @@ def main(
     # 2. Feature extraction                                                #
     # ------------------------------------------------------------------ #
     cache_dir = sononet_cfg.get("cache_dir") or config["features"]["cache_dir"]
+    print(f"\nFeature cache dir: {cache_dir}")
+
+    train_extract_loader = _sequential_loader(train_loader)
+    val_extract_loader = _sequential_loader(val_loader)
+    test_extract_loader = _sequential_loader(test_loader)
+
     if skip_extract:
         print("\n[2/4] Loading cached DINOv2 features (skip extract)...")
-        train_features = load_cached_features(_video_paths_from_loader(train_loader), cache_dir)
-        val_features = load_cached_features(_video_paths_from_loader(val_loader), cache_dir)
-        test_features = load_cached_features(_video_paths_from_loader(test_loader), cache_dir)
+        train_features = load_cached_features(_video_paths_from_loader(train_extract_loader), cache_dir)
+        val_features = load_cached_features(_video_paths_from_loader(val_extract_loader), cache_dir)
+        test_features = load_cached_features(_video_paths_from_loader(test_extract_loader), cache_dir)
     else:
         print("\n[2/4] Extracting DINOv2 features...")
         dinov2 = load_dinov2(device)
-        train_features = extract_features(train_loader, dinov2, device, cache_dir)
-        val_features = extract_features(val_loader, dinov2, device, cache_dir)
-        test_features = extract_features(test_loader, dinov2, device, cache_dir)
+        train_features = extract_features(train_extract_loader, dinov2, device, cache_dir)
+        val_features = extract_features(val_extract_loader, dinov2, device, cache_dir)
+        test_features = extract_features(test_extract_loader, dinov2, device, cache_dir)
     print(
         f"  Videos — train: {len(train_features)}, "
         f"val: {len(val_features)}, test: {len(test_features)}"
@@ -348,8 +388,9 @@ def main(
 
     results_rows: list[dict] = []
 
-    for pooling, clf_name in EXPERIMENT_GRID:
-        print(f"\n  [{pooling} + {clf_name}]")
+    total_experiments = len(EXPERIMENT_GRID)
+    for exp_idx, (pooling, clf_name) in enumerate(EXPERIMENT_GRID, start=1):
+        print(f"\n  Experiment {exp_idx}/{total_experiments}: [{pooling} + {clf_name}]")
         ckpt_stem = f"{pooling}_{clf_name}"
 
         # ---- attention + MLP: joint training path ---------------------- #

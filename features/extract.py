@@ -136,7 +136,17 @@ def extract_features(
     results: dict[str, tuple[np.ndarray, int]] = {}
     use_amp = device.type == "cuda"
 
-    for batch in tqdm(dataloader, desc="Extracting features"):
+    total_videos = None
+    try:
+        total_videos = len(dataloader.dataset)  # type: ignore[arg-type]
+    except Exception:
+        total_videos = None
+
+    cache_hits = 0
+    computed = 0
+
+    pbar = tqdm(total=total_videos, desc="Extracting features", unit="video")
+    for batch in dataloader:
         frames_batch, labels_batch, video_paths = batch
         # frames_batch: list of B tensors, each (N_i, 3, 224, 224) — N_i may vary
         # labels_batch: (B,)
@@ -156,6 +166,9 @@ def extract_features(
                 features = np.load(feat_file)
                 cached_label = int(np.load(label_file))
                 results[video_path] = (features, cached_label)
+                cache_hits += 1
+                pbar.update(1)
+                pbar.set_postfix(cache_hit=cache_hits, computed=computed)
                 continue
 
             # (N, 3, 224, 224) → pass all frames as a batch through DINOv2
@@ -175,5 +188,9 @@ def extract_features(
             np.save(feat_file, features)
             np.save(label_file, np.array(label, dtype=np.int64))
             results[video_path] = (features, label)
+            computed += 1
+            pbar.update(1)
+            pbar.set_postfix(cache_hit=cache_hits, computed=computed)
 
+    pbar.close()
     return results

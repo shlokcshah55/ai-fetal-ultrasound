@@ -128,7 +128,7 @@ def get_dataloaders(
         cache_file = Path(csv_path).parent / f"sononet_cache_{cache_key}.pkl"
 
         if cache_file.exists():
-            print(f"  Loading SonoNet frame indices from cache ({cache_file.name})...")
+            print(f"  Loading SonoNet frame indices from cache ({cache_file})...")
             with open(cache_file, "rb") as f:
                 indices_map: dict[str, list[int]] = pickle.load(f)
             df["frame_indices"] = df["video_path"].map(indices_map)
@@ -154,7 +154,7 @@ def get_dataloaders(
 
             with open(cache_file, "wb") as f:
                 pickle.dump(indices_map, f)
-            print(f"  Cached to {cache_file.name}")
+            print(f"  Cached to {cache_file}")
 
             df["frame_indices"] = df["video_path"].map(indices_map)
 

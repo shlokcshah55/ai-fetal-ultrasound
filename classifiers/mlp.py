@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import roc_auc_score, accuracy_score
+from tqdm import tqdm
 
 
 class MLP(nn.Module):
@@ -52,6 +53,7 @@ def train_mlp(
     checkpoint_path: str,
     input_dim: int = 768,
     extra_params: list[nn.Parameter] | None = None,
+    show_progress: bool = True,
 ) -> tuple[MLP, list[float]]:
     """Train the MLP with early stopping on validation AUROC.
 
@@ -108,8 +110,14 @@ def train_mlp(
     patience = config["early_stopping_patience"]
     val_auroc_history: list[float] = []
 
-    for epoch in range(config["mlp_epochs"]):
+    epoch_iter = range(config["mlp_epochs"])
+    if show_progress:
+        epoch_iter = tqdm(epoch_iter, desc="Training MLP", unit="epoch")
+
+    for epoch in epoch_iter:
         model.train()
+        running_loss = 0.0
+        n_batches = 0
         for X_batch, y_batch in train_loader:
             X_batch = X_batch.to(device)
             y_batch = y_batch.to(device)
@@ -118,6 +126,8 @@ def train_mlp(
             loss = criterion(logits, y_batch)
             loss.backward()
             optimizer.step()
+            running_loss += float(loss.item())
+            n_batches += 1
 
         # Validation
         model.eval()
@@ -133,6 +143,10 @@ def train_mlp(
             val_auroc = float(accuracy_score(y_v_np, val_pred))
 
         val_auroc_history.append(val_auroc)
+
+        if show_progress and hasattr(epoch_iter, "set_postfix"):
+            avg_loss = running_loss / max(n_batches, 1)
+            epoch_iter.set_postfix(loss=f"{avg_loss:.4f}", val_auroc=f"{val_auroc:.4f}", best=f"{best_val_auroc:.4f}")
 
         if val_auroc > best_val_auroc:
             best_val_auroc = val_auroc
