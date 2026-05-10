@@ -323,6 +323,7 @@ def main(
     *,
     sononet_cache_only: bool = False,
     extract_only: bool = False,
+    skip_train_extract: bool = False,
     skip_extract: bool = False,
     n_frames: int | None = None,
     sononet_dir: str | None = None,
@@ -422,7 +423,11 @@ def main(
             train_extract_loader = _missing_cache_loader(train_extract_loader, cache_dir, "train")
             val_extract_loader = _missing_cache_loader(val_extract_loader, cache_dir, "val")
             test_extract_loader = _missing_cache_loader(test_extract_loader, cache_dir, "test")
-        train_features = extract_features(train_extract_loader, dinov2, device, cache_dir)
+        if extract_only and skip_train_extract:
+            print("  Skipping train extraction by request; train cache must already exist.")
+            train_features = {}
+        else:
+            train_features = extract_features(train_extract_loader, dinov2, device, cache_dir)
         val_features = extract_features(val_extract_loader, dinov2, device, cache_dir)
         test_features = extract_features(test_extract_loader, dinov2, device, cache_dir)
     print(
@@ -597,6 +602,11 @@ def _cli() -> None:
         help="Run DINO feature extraction + caching; exit before training.",
     )
     parser.add_argument(
+        "--skip-train-extract",
+        action="store_true",
+        help="With --extract-only, skip train feature extraction and process only val/test.",
+    )
+    parser.add_argument(
         "--skip-extract",
         action="store_true",
         help="Skip DINO inference and load cached embeddings from the chosen cache dir.",
@@ -655,6 +665,8 @@ def _cli() -> None:
 
     if args.sononet_cache_only and args.extract_only:
         raise SystemExit("Choose only one of --sononet-cache-only or --extract-only.")
+    if args.skip_train_extract and not args.extract_only:
+        raise SystemExit("Use --skip-train-extract only together with --extract-only.")
 
     if (args.pooling is None) != (args.classifier is None):
         raise SystemExit("Use --pooling and --classifier together, or omit both.")
@@ -671,6 +683,7 @@ def _cli() -> None:
         config_path=args.config,
         sononet_cache_only=args.sononet_cache_only,
         extract_only=args.extract_only,
+        skip_train_extract=args.skip_train_extract,
         skip_extract=args.skip_extract,
         n_frames=args.n_frames,
         sononet_dir=args.sononet_dir,
