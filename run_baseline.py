@@ -420,7 +420,8 @@ def main(
         print("\n[2/4] Extracting DINOv2 features...")
         dinov2 = load_dinov2(device)
         if extract_only:
-            train_extract_loader = _missing_cache_loader(train_extract_loader, cache_dir, "train")
+            if not skip_train_extract:
+                train_extract_loader = _missing_cache_loader(train_extract_loader, cache_dir, "train")
             val_extract_loader = _missing_cache_loader(val_extract_loader, cache_dir, "val")
             test_extract_loader = _missing_cache_loader(test_extract_loader, cache_dir, "test")
         if extract_only and skip_train_extract:
