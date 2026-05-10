@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import random
 import os
 from pathlib import Path
@@ -276,6 +277,47 @@ def _sequential_loader(loader):
     )
 
 
+def _missing_cache_loader(loader, cache_dir: str, split_name: str):
+    """Create a loader containing only videos without cached feature files."""
+    from torch.utils.data import DataLoader
+
+    dataset = loader.dataset
+    records = getattr(dataset, "records", None)
+    if records is None:
+        return loader
+
+    cache_path = Path(cache_dir)
+    missing_records = []
+    for record in records:
+        video_path = record["video_path"]
+        cache_key = hashlib.md5(video_path.encode()).hexdigest()
+        feat_file = cache_path / f"{cache_key}.npy"
+        label_file = cache_path / f"{cache_key}_label.npy"
+        if not (feat_file.exists() and label_file.exists()):
+            missing_records.append(record)
+
+    cached = len(records) - len(missing_records)
+    print(
+        f"  Cache coverage ({split_name}): "
+        f"{cached}/{len(records)} cached, {len(missing_records)} missing"
+    )
+
+    missing_dataset = dataset.__class__(
+        missing_records,
+        n_frames=dataset.n_frames,
+        transform=dataset.transform,
+    )
+    return DataLoader(
+        missing_dataset,
+        batch_size=loader.batch_size,
+        shuffle=False,
+        num_workers=loader.num_workers,
+        pin_memory=loader.pin_memory,
+        drop_last=False,
+        collate_fn=loader.collate_fn,
+    )
+
+
 def main(
     config_path: str = "config.yaml",
     *,
@@ -376,6 +418,10 @@ def main(
     else:
         print("\n[2/4] Extracting DINOv2 features...")
         dinov2 = load_dinov2(device)
+        if extract_only:
+            train_extract_loader = _missing_cache_loader(train_extract_loader, cache_dir, "train")
+            val_extract_loader = _missing_cache_loader(val_extract_loader, cache_dir, "val")
+            test_extract_loader = _missing_cache_loader(test_extract_loader, cache_dir, "test")
         train_features = extract_features(train_extract_loader, dinov2, device, cache_dir)
         val_features = extract_features(val_extract_loader, dinov2, device, cache_dir)
         test_features = extract_features(test_extract_loader, dinov2, device, cache_dir)
