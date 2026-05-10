@@ -40,6 +40,7 @@ def load_dinov2(device: torch.device) -> nn.Module:
 def load_cached_features(
     video_paths: list[str],
     cache_dir: str,
+    split_name: str | None = None,
 ) -> dict[str, tuple[np.ndarray, int]]:
     """Load previously cached DINOv2 features from disk (no model inference).
 
@@ -49,6 +50,7 @@ def load_cached_features(
     Args:
         video_paths: List of video paths (strings) used to derive cache keys.
         cache_dir: Directory containing cached .npy files.
+        split_name: Optional label used in the progress bar.
 
     Returns:
         Dict mapping video_path → (features_array of shape (N, 768), label).
@@ -56,19 +58,26 @@ def load_cached_features(
     cache_path = Path(cache_dir)
     results: dict[str, tuple[np.ndarray, int]] = {}
 
+    desc = "Loading cached features"
+    if split_name is not None:
+        desc = f"Loading cached features ({split_name})"
+
     missing: list[str] = []
-    for video_path in video_paths:
+    progress = tqdm(video_paths, desc=desc, unit="video")
+    for video_path in progress:
         cache_key = hashlib.md5(video_path.encode()).hexdigest()
         feat_file = cache_path / f"{cache_key}.npy"
         label_file = cache_path / f"{cache_key}_label.npy"
 
         if not (feat_file.exists() and label_file.exists()):
             missing.append(video_path)
+            progress.set_postfix(loaded=len(results), missing=len(missing))
             continue
 
         features = np.load(feat_file)
         label = int(np.load(label_file))
         results[video_path] = (features, label)
+        progress.set_postfix(loaded=len(results), missing=len(missing))
 
     if missing:
         preview = "\n".join(f"  - {p}" for p in missing[:10])

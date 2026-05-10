@@ -358,9 +358,21 @@ def main(
 
     if skip_extract:
         print("\n[2/4] Loading cached DINOv2 features (skip extract)...")
-        train_features = load_cached_features(_video_paths_from_loader(train_extract_loader), cache_dir)
-        val_features = load_cached_features(_video_paths_from_loader(val_extract_loader), cache_dir)
-        test_features = load_cached_features(_video_paths_from_loader(test_extract_loader), cache_dir)
+        train_features = load_cached_features(
+            _video_paths_from_loader(train_extract_loader),
+            cache_dir,
+            split_name="train",
+        )
+        val_features = load_cached_features(
+            _video_paths_from_loader(val_extract_loader),
+            cache_dir,
+            split_name="val",
+        )
+        test_features = load_cached_features(
+            _video_paths_from_loader(test_extract_loader),
+            cache_dir,
+            split_name="test",
+        )
     else:
         print("\n[2/4] Extracting DINOv2 features...")
         dinov2 = load_dinov2(device)
