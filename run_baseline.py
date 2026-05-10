@@ -331,6 +331,7 @@ def main(
     sononet_cache_dir: str | None = None,
     features_cache_dir: str | None = None,
     device_override: str | None = None,
+    extract_splits: list[str] | None = None,
     experiment_grid: list[tuple[str, str]] | None = None,
 ) -> None:
     repo_root = Path(__file__).parent
@@ -357,6 +358,9 @@ def main(
 
     if features_cache_dir is not None:
         config["features"]["cache_dir"] = features_cache_dir
+
+    if extract_splits is None:
+        extract_splits = ["train", "val", "test"]
 
     active_experiment_grid = experiment_grid or BASELINE_EXPERIMENT_GRID
 
@@ -420,17 +424,30 @@ def main(
         print("\n[2/4] Extracting DINOv2 features...")
         dinov2 = load_dinov2(device)
         if extract_only:
-            if not skip_train_extract:
+            if "train" in extract_splits and not skip_train_extract:
                 train_extract_loader = _missing_cache_loader(train_extract_loader, cache_dir, "train")
-            val_extract_loader = _missing_cache_loader(val_extract_loader, cache_dir, "val")
-            test_extract_loader = _missing_cache_loader(test_extract_loader, cache_dir, "test")
-        if extract_only and skip_train_extract:
+            if "val" in extract_splits:
+                val_extract_loader = _missing_cache_loader(val_extract_loader, cache_dir, "val")
+            if "test" in extract_splits:
+                test_extract_loader = _missing_cache_loader(test_extract_loader, cache_dir, "test")
+        if "train" not in extract_splits:
+            print("  Skipping train extraction; split not requested.")
+            train_features = {}
+        elif extract_only and skip_train_extract:
             print("  Skipping train extraction by request; train cache must already exist.")
             train_features = {}
         else:
             train_features = extract_features(train_extract_loader, dinov2, device, cache_dir)
-        val_features = extract_features(val_extract_loader, dinov2, device, cache_dir)
-        test_features = extract_features(test_extract_loader, dinov2, device, cache_dir)
+        if "val" in extract_splits:
+            val_features = extract_features(val_extract_loader, dinov2, device, cache_dir)
+        else:
+            print("  Skipping val extraction; split not requested.")
+            val_features = {}
+        if "test" in extract_splits:
+            test_features = extract_features(test_extract_loader, dinov2, device, cache_dir)
+        else:
+            print("  Skipping test extraction; split not requested.")
+            test_features = {}
     print(
         f"  Videos — train: {len(train_features)}, "
         f"val: {len(val_features)}, test: {len(test_features)}"
@@ -608,6 +625,13 @@ def _cli() -> None:
         help="With --extract-only, skip train feature extraction and process only val/test.",
     )
     parser.add_argument(
+        "--extract-splits",
+        nargs="+",
+        choices=["train", "val", "test"],
+        default=None,
+        help="With --extract-only, choose which split(s) to extract.",
+    )
+    parser.add_argument(
         "--skip-extract",
         action="store_true",
         help="Skip DINO inference and load cached embeddings from the chosen cache dir.",
@@ -668,6 +692,8 @@ def _cli() -> None:
         raise SystemExit("Choose only one of --sononet-cache-only or --extract-only.")
     if args.skip_train_extract and not args.extract_only:
         raise SystemExit("Use --skip-train-extract only together with --extract-only.")
+    if args.extract_splits is not None and not args.extract_only:
+        raise SystemExit("Use --extract-splits only together with --extract-only.")
 
     if (args.pooling is None) != (args.classifier is None):
         raise SystemExit("Use --pooling and --classifier together, or omit both.")
@@ -692,6 +718,7 @@ def _cli() -> None:
         sononet_cache_dir=args.sononet_cache_dir,
         features_cache_dir=args.features_cache_dir,
         device_override=args.device,
+        extract_splits=args.extract_splits,
         experiment_grid=experiment_grid,
     )
 
