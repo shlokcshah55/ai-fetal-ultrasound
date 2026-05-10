@@ -21,7 +21,11 @@ from classifiers.mlp import MLP, train_mlp
 from evaluate import evaluate, find_optimal_threshold
 
 
-EXPERIMENT_GRID = [
+BASELINE_EXPERIMENT_GRID = [
+    ("mean",      "LogisticRegression"),
+]
+
+FULL_EXPERIMENT_GRID = [
     ("mean",      "LogisticRegression"),
     ("mean",      "LinearSVC"),
     ("mean",      "MLP"),
@@ -29,6 +33,11 @@ EXPERIMENT_GRID = [
     ("max",       "MLP"),
     ("attention", "MLP"),
 ]
+
+EXPERIMENT_SETS = {
+    "baseline": BASELINE_EXPERIMENT_GRID,
+    "full": FULL_EXPERIMENT_GRID,
+}
 
 
 def set_seeds(seed: int) -> None:
@@ -279,6 +288,7 @@ def main(
     sononet_cache_dir: str | None = None,
     features_cache_dir: str | None = None,
     device_override: str | None = None,
+    experiment_grid: list[tuple[str, str]] | None = None,
 ) -> None:
     repo_root = Path(__file__).parent
     os.chdir(repo_root)
@@ -304,6 +314,8 @@ def main(
 
     if features_cache_dir is not None:
         config["features"]["cache_dir"] = features_cache_dir
+
+    active_experiment_grid = experiment_grid or BASELINE_EXPERIMENT_GRID
 
     device_str = device_override or config["features"]["device"]
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
@@ -365,11 +377,14 @@ def main(
         return
 
     # ------------------------------------------------------------------ #
-    # 3. Pre-pool for mean/max experiments                                 #
+    # 3. Pre-pool features for non-attention experiments                    #
     # ------------------------------------------------------------------ #
-    print("\n[3/4] Pre-pooling features for mean/max experiments...")
+    print("\n[3/4] Pre-pooling features for baseline experiments...")
     pooled_data: dict[str, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
-    for pooling in ("mean", "max"):
+    poolings_to_precompute = sorted({
+        pooling for pooling, _ in active_experiment_grid if pooling != "attention"
+    })
+    for pooling in poolings_to_precompute:
         X_train, y_train = pool_features(train_features, pooling)
         X_val, y_val = pool_features(val_features, pooling)
         X_test, y_test = pool_features(test_features, pooling)
@@ -388,8 +403,8 @@ def main(
 
     results_rows: list[dict] = []
 
-    total_experiments = len(EXPERIMENT_GRID)
-    for exp_idx, (pooling, clf_name) in enumerate(EXPERIMENT_GRID, start=1):
+    total_experiments = len(active_experiment_grid)
+    for exp_idx, (pooling, clf_name) in enumerate(active_experiment_grid, start=1):
         print(f"\n  Experiment {exp_idx}/{total_experiments}: [{pooling} + {clf_name}]")
         ckpt_stem = f"{pooling}_{clf_name}"
 
@@ -560,10 +575,39 @@ def _cli() -> None:
         default=None,
         help="Override config.features.device (e.g. cuda or cpu).",
     )
+    parser.add_argument(
+        "--experiment-set",
+        choices=sorted(EXPERIMENT_SETS),
+        default="baseline",
+        help="Which experiment set to run: baseline is mean+LogisticRegression only; full restores the old grid.",
+    )
+    parser.add_argument(
+        "--pooling",
+        choices=["mean", "max", "attention"],
+        default=None,
+        help="Run one explicit pooling method instead of an experiment set.",
+    )
+    parser.add_argument(
+        "--classifier",
+        choices=["LogisticRegression", "LinearSVC", "MLP", "kNN"],
+        default=None,
+        help="Run one explicit classifier instead of an experiment set.",
+    )
     args = parser.parse_args()
 
     if args.sononet_cache_only and args.extract_only:
         raise SystemExit("Choose only one of --sononet-cache-only or --extract-only.")
+
+    if (args.pooling is None) != (args.classifier is None):
+        raise SystemExit("Use --pooling and --classifier together, or omit both.")
+    if args.pooling == "attention" and args.classifier != "MLP":
+        raise SystemExit("Attention pooling is currently implemented only for --classifier MLP.")
+
+    experiment_grid = (
+        [(args.pooling, args.classifier)]
+        if args.pooling is not None
+        else EXPERIMENT_SETS[args.experiment_set]
+    )
 
     main(
         config_path=args.config,
@@ -576,6 +620,7 @@ def _cli() -> None:
         sononet_cache_dir=args.sononet_cache_dir,
         features_cache_dir=args.features_cache_dir,
         device_override=args.device,
+        experiment_grid=experiment_grid,
     )
 
 
