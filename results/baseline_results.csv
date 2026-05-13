@@ -1,0 +1,2 @@
+pooling,classifier,auroc,auprc,macro_f1,sensitivity,specificity,threshold,confusion_matrix
+mean,LogisticRegression,0.7118713746170606,0.4241131592023877,0.5894280342363899,0.709197894084856,0.5976528957160576,0.4386734681546648,"[[6264, 4217], [939, 2290]]"

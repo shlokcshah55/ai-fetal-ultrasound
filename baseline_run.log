@@ -1,0 +1,5 @@
+nohup: ignoring input
+Traceback (most recent call last):
+  File "/vol/bitbucket/scs22/fyp/ai-fetal-ultrasound/run_baseline.py", line 9, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'
