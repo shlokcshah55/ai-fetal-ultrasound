@@ -125,13 +125,16 @@ def train_attention_mlp(
     pos_weight_tensor = torch.tensor([pos_weight_val], dtype=torch.float32, device=device)
 
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
+    mlp_lr = float(config["training"]["mlp_lr"])
+    mlp_weight_decay = float(config["training"]["mlp_weight_decay"])
+    mlp_epochs = int(config["training"]["mlp_epochs"])
+    patience = int(config["training"]["early_stopping_patience"])
     optimizer = torch.optim.Adam(
         list(model.parameters()) + list(attention_head.parameters()),
-        lr=config["training"]["mlp_lr"],
-        weight_decay=config["training"]["mlp_weight_decay"],
+        lr=mlp_lr,
+        weight_decay=mlp_weight_decay,
     )
 
-    patience = config["training"]["early_stopping_patience"]
     best_val_auroc = -1.0
     patience_counter = 0
 
@@ -142,7 +145,7 @@ def train_attention_mlp(
     from sklearn.metrics import roc_auc_score, accuracy_score
 
     epoch_iter = tqdm(
-        range(config["training"]["mlp_epochs"]),
+        range(mlp_epochs),
         desc="Training attention+MLP",
         unit="epoch",
     )

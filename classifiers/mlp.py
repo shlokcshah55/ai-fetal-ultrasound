@@ -89,10 +89,15 @@ def train_mlp(
     if extra_params:
         params = params + list(extra_params)
 
+    lr = float(config["mlp_lr"])
+    weight_decay = float(config["mlp_weight_decay"])
+    max_epochs = int(config["mlp_epochs"])
+    patience = int(config["early_stopping_patience"])
+
     optimizer = torch.optim.Adam(
         params,
-        lr=config["mlp_lr"],
-        weight_decay=config["mlp_weight_decay"],
+        lr=lr,
+        weight_decay=weight_decay,
     )
 
     # Build tensor datasets
@@ -107,10 +112,9 @@ def train_mlp(
 
     best_val_auroc = -1.0
     patience_counter = 0
-    patience = config["early_stopping_patience"]
     val_auroc_history: list[float] = []
 
-    epoch_iter = range(config["mlp_epochs"])
+    epoch_iter = range(max_epochs)
     if show_progress:
         epoch_iter = tqdm(epoch_iter, desc="Training MLP", unit="epoch")
 
