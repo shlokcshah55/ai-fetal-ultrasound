@@ -20,3 +20,17 @@ training:
   mlp_lr: 1e-3
   mlp_weight_decay: 1e-4
   early_stopping_patience: 10
+
+vos:
+  epochs: 100
+  lr: 1e-3
+  weight_decay: 1e-4
+  batch_size: 64
+  dropout: 0.3
+  lambda_vos: 0.1
+  virtual_outliers_per_batch: 64
+  tail_q_low: 0.95
+  tail_q_high: 0.999
+  covariance: "ledoit_wolf"
+  covariance_jitter: 1e-4
+  early_stopping_patience: 10
