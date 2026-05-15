@@ -82,7 +82,10 @@ def train_mlp(
     pos_weight_val = count_neg / max(count_pos, 1)
     pos_weight_tensor = torch.tensor([pos_weight_val], dtype=torch.float32, device=device)
 
-    model = MLP(input_dim=input_dim).to(device)
+    model = MLP(
+        input_dim=input_dim,
+        dropout=float(config.get("dropout", 0.3)),
+    ).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
 
     params = list(model.parameters())
