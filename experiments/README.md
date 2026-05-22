@@ -12,8 +12,9 @@ Suggested layout:
   MC dropout entropy/mutual-information uncertainty on held-out diseases.
 - `run_disease_holdout_energy.py`: train a deterministic two-logit MLP and
   evaluate post-hoc energy scores on held-out diseases.
+- `run_disease_holdout_edl.py`: train an evidential MLP that outputs Dirichlet
+  evidence and evaluate uncertainty mass `K / S` on held-out diseases.
 - `run_ensemble_*.py`: deep ensemble variants.
-- `run_evidential_*.py`: evidential/Bayesian head variants.
 - `run_conformal_*.py`: conformal prediction calibration/evaluation.
 
 The current disease-holdout setup excludes Tetralogy of Fallot, AVSD, and

@@ -34,3 +34,13 @@ vos:
   covariance: "ledoit_wolf"
   covariance_jitter: 1e-4
   early_stopping_patience: 10
+
+edl:
+  epochs: 100
+  lr: 1e-3
+  weight_decay: 1e-4
+  batch_size: 64
+  dropout: 0.3
+  evidence_activation: "relu"
+  annealing_epochs: 10
+  early_stopping_patience: 10
