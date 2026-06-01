@@ -27,8 +27,18 @@ vos:
   weight_decay: 1e-4
   batch_size: 64
   dropout: 0.3
+  feature_dim: 64
   lambda_vos: 0.1
+  # Warm up the classifier on CE alone before turning on the energy regulariser,
+  # so the penultimate Gaussians are estimated from a meaningful representation
+  # (Du et al. use a start_epoch ~40% of training). Outliers are synthesised in
+  # the 64-D penultimate space, where the chi-square tail band is genuinely
+  # separable from ID (unlike the frozen 768-D input space).
+  vos_start_epoch: 40
   virtual_outliers_per_batch: 64
+  # phi: learnable logistic regressor mapping the scalar energy to an ID/OOD
+  # logit, decoupling the magnitude objective from softmax-CE.
+  phi_hidden_dim: 16
   tail_q_low: 0.95
   tail_q_high: 0.999
   covariance: "ledoit_wolf"
@@ -43,5 +53,11 @@ edl:
   dropout: 0.3
   evidence_activation: "softplus"
   annealing_epochs: 25
+  # Scale on the annealed KL-to-uniform regulariser (effective coef =
+  # kl_weight * min(1, epoch/annealing_epochs)). The full-strength KL (1.0)
+  # collapses every prediction to the uniform Dirichlet under class imbalance;
+  # 0.1 keeps the evidence-sparsity prior without overwhelming the data fit.
+  # Set to 0.0 for the no-KL ablation.
+  kl_weight: 0.1
   class_weighting: true
   early_stopping_patience: 10

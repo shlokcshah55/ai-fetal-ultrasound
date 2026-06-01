@@ -14,24 +14,69 @@ from tqdm import tqdm
 
 
 class VOSMLP(nn.Module):
-    """Two-logit MLP classifier for VOS energy training."""
+    """Two-logit MLP classifier for VOS energy training.
 
-    def __init__(self, input_dim: int = 768, dropout: float = 0.3) -> None:
+    Split into a ``trunk`` (768 -> ... -> feature_dim) and a final linear
+    ``classifier`` (feature_dim -> 2). Faithful VOS synthesises virtual outliers
+    in the *penultimate* feature space produced by ``trunk`` and routes them
+    through ``classifier`` only, so the gradient from the energy regulariser
+    reshapes that representation. BatchNorm1d mirrors the working ``train_mlp``
+    recipe (vs. the under-confident LayerNorm variant).
+    """
+
+    def __init__(
+        self,
+        input_dim: int = 768,
+        dropout: float = 0.3,
+        feature_dim: int = 64,
+    ) -> None:
         super().__init__()
-        self.net = nn.Sequential(
+        self.feature_dim = feature_dim
+        self.trunk = nn.Sequential(
             nn.Linear(input_dim, 256),
-            nn.LayerNorm(256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(256, 64),
-            nn.LayerNorm(64),
+            nn.Linear(256, feature_dim),
+            nn.BatchNorm1d(feature_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(64, 2),
         )
+        self.classifier = nn.Linear(feature_dim, 2)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+        return self.classifier(self.trunk(x))
+
+    def forward_features(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return (logits, penultimate features)."""
+        feats = self.trunk(x)
+        return self.classifier(feats), feats
+
+    def classify_features(self, feats: torch.Tensor) -> torch.Tensor:
+        """Logits for points already living in the penultimate space."""
+        return self.classifier(feats)
+
+
+class EnergyPhi(nn.Module):
+    """Learnable logistic regressor on the scalar energy (VOS's ``phi``).
+
+    Decouples the magnitude objective from softmax-CE: maps the energy score to
+    an ID/OOD logit so the binary loss does not act directly on raw logsumexp.
+    """
+
+    def __init__(self, hidden_dim: int = 16) -> None:
+        super().__init__()
+        if hidden_dim and hidden_dim > 0:
+            self.net = nn.Sequential(
+                nn.Linear(1, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, 1),
+            )
+        else:
+            self.net = nn.Linear(1, 1)
+
+    def forward(self, energy: torch.Tensor) -> torch.Tensor:
+        return self.net(energy.reshape(-1, 1)).reshape(-1)
 
 
 @dataclass(frozen=True)
@@ -156,6 +201,32 @@ def sample_virtual_outliers(
     return np.concatenate(samples, axis=0).astype(np.float32)
 
 
+def _penultimate_features(
+    model: VOSMLP,
+    x: np.ndarray,
+    device: torch.device,
+    batch_size: int = 512,
+) -> np.ndarray:
+    """Extract penultimate (trunk) features for an array under model.eval()."""
+    x = np.asarray(x, dtype=np.float32)
+    loader = DataLoader(
+        TensorDataset(torch.from_numpy(x)),
+        batch_size=batch_size,
+        shuffle=False,
+        drop_last=False,
+    )
+    was_training = model.training
+    model.eval()
+    feats: list[np.ndarray] = []
+    with torch.no_grad():
+        for (x_batch,) in loader:
+            _, f = model.forward_features(x_batch.to(device))
+            feats.append(f.cpu().numpy())
+    if was_training:
+        model.train()
+    return np.concatenate(feats, axis=0)
+
+
 def train_vos_mlp(
     x_train: np.ndarray,
     y_train: np.ndarray,
@@ -168,7 +239,15 @@ def train_vos_mlp(
     input_dim: int = 768,
     show_progress: bool = True,
 ) -> tuple[VOSMLP, list[float], GaussianStats]:
-    """Train a VOS MLP with virtual-outlier energy regularisation."""
+    """Train a VOS MLP with virtual-outlier energy regularisation.
+
+    Outliers are synthesised in the model's *penultimate* feature space (refit
+    each epoch from the current representation) and routed through the final
+    linear layer only, so the energy regulariser reshapes the trunk -- the core
+    mechanism of Du et al. (ICLR 2022). The regulariser is warmed up for
+    ``vos_start_epoch`` epochs and its energies pass through a learnable ``phi``
+    before the binary ID/OOD loss.
+    """
     Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
 
     x_train = np.asarray(x_train, dtype=np.float32)
@@ -178,28 +257,28 @@ def train_vos_mlp(
 
     seed = int(config.get("seed", 42))
     rng = np.random.default_rng(seed)
-    stats = fit_gaussian_stats(
-        x_train,
-        y_train,
-        covariance=str(config.get("covariance", "ledoit_wolf")),
-        jitter=float(config.get("covariance_jitter", 1e-4)),
-    )
 
+    feature_dim = int(config.get("feature_dim", 64))
     model = VOSMLP(
         input_dim=input_dim,
         dropout=float(config.get("dropout", 0.3)),
+        feature_dim=feature_dim,
     ).to(device)
+    phi = EnergyPhi(hidden_dim=int(config.get("phi_hidden_dim", 16))).to(device)
 
+    # Class weighting mirrors train_mlp's pos_weight = n_neg / n_pos applied to
+    # the positive (CHD) class; weight[0] stays at 1.0 (no mean-1 rescaling that
+    # otherwise shrinks the gradient and squashes logits toward the prior).
     class_counts = np.bincount(y_train, minlength=2).astype(np.float32)
-    class_weights = class_counts.sum() / np.maximum(class_counts, 1.0)
-    class_weights = class_weights / class_weights.mean()
+    pos_weight = float(class_counts[0]) / max(float(class_counts[1]), 1.0)
+    class_weights = np.array([1.0, pos_weight], dtype=np.float32)
     ce_loss = nn.CrossEntropyLoss(
         weight=torch.tensor(class_weights, dtype=torch.float32, device=device)
     )
     vos_loss = nn.BCEWithLogitsLoss()
 
     optimizer = torch.optim.Adam(
-        model.parameters(),
+        list(model.parameters()) + list(phi.parameters()),
         lr=float(config.get("lr", config.get("mlp_lr", 1e-3))),
         weight_decay=float(config.get("weight_decay", config.get("mlp_weight_decay", 1e-4))),
     )
@@ -209,7 +288,7 @@ def train_vos_mlp(
         TensorDataset(torch.from_numpy(x_train), torch.from_numpy(y_train)),
         batch_size=batch_size,
         shuffle=True,
-        drop_last=False,
+        drop_last=True,
     )
     x_val_t = torch.from_numpy(x_val).to(device)
 
@@ -219,53 +298,81 @@ def train_vos_mlp(
     n_outliers_per_batch = int(config.get("virtual_outliers_per_batch", batch_size))
     tail_q_low = float(config.get("tail_q_low", 0.95))
     tail_q_high = float(config.get("tail_q_high", 0.999))
+    vos_start_epoch = int(config.get("vos_start_epoch", max(1, int(0.4 * max_epochs))))
+    covariance = str(config.get("covariance", "ledoit_wolf"))
+    jitter = float(config.get("covariance_jitter", 1e-4))
 
     best_val_auroc = -1.0
     patience_counter = 0
     val_auroc_history: list[float] = []
+    stats: GaussianStats | None = None
+    vos_was_active = False
 
     epoch_iter = range(max_epochs)
     if show_progress:
         epoch_iter = tqdm(epoch_iter, desc="Training VOS MLP", unit="epoch")
 
-    for _ in epoch_iter:
+    for epoch in epoch_iter:
+        vos_active = epoch >= vos_start_epoch
+        if vos_active and not vos_was_active:
+            # Give the regularised phase its own early-stopping window so the
+            # returned checkpoint always reflects VOS-shaped features rather than
+            # an earlier CE-only epoch.
+            best_val_auroc = -1.0
+            patience_counter = 0
+        vos_was_active = vos_active
+        if vos_active:
+            # Refit the class-conditional Gaussians from the *current* penultimate
+            # representation so virtual outliers track the evolving feature space.
+            feats_train = _penultimate_features(model, x_train, device)
+            stats = fit_gaussian_stats(
+                feats_train, y_train, covariance=covariance, jitter=jitter
+            )
+
         model.train()
-        running_loss = 0.0
+        running_cls = 0.0
+        running_vos = 0.0
         n_batches = 0
 
         for x_batch, y_batch in train_loader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
 
-            virtual_np = sample_virtual_outliers(
-                stats,
-                n_per_class=max(1, n_outliers_per_batch // 2),
-                tail_q_low=tail_q_low,
-                tail_q_high=tail_q_high,
-                rng=rng,
-            )
-            x_virtual = torch.from_numpy(virtual_np).to(device)
-
             optimizer.zero_grad()
-            logits_real = model(x_batch)
-            logits_virtual = model(x_virtual)
-
+            logits_real, _ = model.forward_features(x_batch)
             cls_loss = ce_loss(logits_real, y_batch)
-            energy_real = energy_from_logits(logits_real)
-            energy_virtual = energy_from_logits(logits_virtual)
-            id_logits = torch.cat([-energy_real, -energy_virtual], dim=0)
-            id_targets = torch.cat(
-                [
-                    torch.ones_like(energy_real),
-                    torch.zeros_like(energy_virtual),
-                ],
-                dim=0,
-            )
-            loss = cls_loss + lambda_vos * vos_loss(id_logits, id_targets)
+            loss = cls_loss
+
+            if vos_active and stats is not None:
+                virtual_np = sample_virtual_outliers(
+                    stats,
+                    n_per_class=max(1, n_outliers_per_batch // 2),
+                    tail_q_low=tail_q_low,
+                    tail_q_high=tail_q_high,
+                    rng=rng,
+                )
+                feats_virtual = torch.from_numpy(virtual_np).to(device)
+                logits_virtual = model.classify_features(feats_virtual)
+
+                energy_real = energy_from_logits(logits_real)
+                energy_virtual = energy_from_logits(logits_virtual)
+                phi_logits = phi(torch.cat([energy_real, energy_virtual], dim=0))
+                # Target 1 == OOD (virtual), 0 == ID (real).
+                phi_targets = torch.cat(
+                    [
+                        torch.zeros_like(energy_real),
+                        torch.ones_like(energy_virtual),
+                    ],
+                    dim=0,
+                )
+                vos_term = vos_loss(phi_logits, phi_targets)
+                loss = cls_loss + lambda_vos * vos_term
+                running_vos += float(vos_term.item())
+
             loss.backward()
             optimizer.step()
 
-            running_loss += float(loss.item())
+            running_cls += float(cls_loss.item())
             n_batches += 1
 
         model.eval()
@@ -281,9 +388,9 @@ def train_vos_mlp(
 
         val_auroc_history.append(val_auroc)
         if show_progress and hasattr(epoch_iter, "set_postfix"):
-            avg_loss = running_loss / max(n_batches, 1)
             epoch_iter.set_postfix(
-                loss=f"{avg_loss:.4f}",
+                cls=f"{running_cls / max(n_batches, 1):.4f}",
+                vos=f"{running_vos / max(n_batches, 1):.4f}",
                 val_auroc=f"{val_auroc:.4f}",
                 best=f"{best_val_auroc:.4f}",
             )
@@ -299,7 +406,14 @@ def train_vos_mlp(
 
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     model.eval()
-    return model, val_auroc_history, stats
+    # Return Gaussian stats fit on the *final* representation for downstream use.
+    final_stats = fit_gaussian_stats(
+        _penultimate_features(model, x_train, device),
+        y_train,
+        covariance=covariance,
+        jitter=jitter,
+    )
+    return model, val_auroc_history, final_stats
 
 
 def _mahalanobis_squared(

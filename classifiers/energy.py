@@ -15,13 +15,18 @@ class EnergyMLP(nn.Module):
 
     def __init__(self, input_dim: int = 768, dropout: float = 0.3) -> None:
         super().__init__()
+        # BatchNorm1d (not LayerNorm): at inference it applies a fixed transform
+        # from training-population running stats rather than renormalizing each
+        # sample to unit scale. Per-sample logit magnitude survives, which is
+        # exactly the signal the energy score E(x) = -T*logsumexp(logits/T) relies
+        # on. Per-sample LayerNorm flattens that magnitude and kills the OOD signal.
         self.net = nn.Sequential(
             nn.Linear(input_dim, 256),
-            nn.LayerNorm(256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(256, 64),
-            nn.LayerNorm(64),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(64, 2),
@@ -107,9 +112,12 @@ def train_energy_mlp(
         dropout=float(config.get("dropout", 0.3)),
     ).to(device)
 
+    # Mirror train_mlp's pos_weight = n_neg / n_pos on the positive (CHD) class;
+    # weight[0] stays 1.0. The previous mean-1 rescaling halved the loss scale and
+    # helped pin softmax near the prior.
     class_counts = np.bincount(y_train, minlength=2).astype(np.float32)
-    class_weights = class_counts.sum() / np.maximum(class_counts, 1.0)
-    class_weights = class_weights / class_weights.mean()
+    pos_weight = float(class_counts[0]) / max(float(class_counts[1]), 1.0)
+    class_weights = np.array([1.0, pos_weight], dtype=np.float32)
     criterion = nn.CrossEntropyLoss(
         weight=torch.tensor(class_weights, dtype=torch.float32, device=device)
     )
@@ -127,7 +135,8 @@ def train_energy_mlp(
         TensorDataset(torch.from_numpy(x_train), torch.from_numpy(y_train)),
         batch_size=batch_size,
         shuffle=True,
-        drop_last=False,
+        # drop_last=True so BatchNorm1d never sees a size-1 final batch.
+        drop_last=True,
     )
     x_val_t = torch.from_numpy(x_val).to(device)
 

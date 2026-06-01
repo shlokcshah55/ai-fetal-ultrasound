@@ -131,6 +131,16 @@ def main() -> None:
     )
     parser.add_argument("--annealing-epochs", type=int, default=None)
     parser.add_argument(
+        "--kl-weight",
+        type=float,
+        default=None,
+        help=(
+            "Scale on the annealed KL-to-uniform regulariser. Effective coef = "
+            "kl_weight * min(1, epoch/annealing_epochs). Use 0 for the no-KL "
+            "ablation. Defaults to config.yaml edl.kl_weight."
+        ),
+    )
+    parser.add_argument(
         "--no-class-weighting",
         action="store_true",
         help="Disable balanced class weighting in the EDL loss.",
@@ -150,12 +160,23 @@ def main() -> None:
     parser.add_argument("--no-sononet", action="store_true")
     parser.add_argument("--device", default=None)
     parser.add_argument("--output-prefix", default="heldout_disease_edl")
+    parser.add_argument("--n-folds", type=int, default=1, help="Number of CV folds (1 = single split).")
+    parser.add_argument("--fold", type=int, default=0, help="Which fold is the test set (0-indexed).")
     args = parser.parse_args()
 
     os.chdir(REPO_ROOT)
     config = load_config(args.config)
     seed = config["training"]["seed"]
     set_seeds(seed)
+
+    if args.n_folds < 1:
+        raise SystemExit("--n-folds must be >= 1.")
+    if not 0 <= args.fold < args.n_folds:
+        raise SystemExit(f"--fold must be in [0, {args.n_folds}); got {args.fold}.")
+    if args.n_folds > 1:
+        # Tag every output (checkpoints + results) with the fold so runs across
+        # folds don't overwrite each other.
+        args.output_prefix = f"{args.output_prefix}_fold{args.fold}of{args.n_folds}"
 
     edl_base_config = config.get("edl", {})
     dropout = (
@@ -171,6 +192,11 @@ def main() -> None:
         if args.annealing_epochs is not None
         else int(edl_base_config.get("annealing_epochs", 25))
     )
+    kl_weight = (
+        float(args.kl_weight)
+        if args.kl_weight is not None
+        else float(edl_base_config.get("kl_weight", 0.1))
+    )
     class_weighting = bool(edl_base_config.get("class_weighting", True))
     if args.no_class_weighting:
         class_weighting = False
@@ -179,6 +205,8 @@ def main() -> None:
         raise SystemExit("--dropout must be in [0, 1).")
     if annealing_epochs < 1:
         raise SystemExit("--annealing-epochs must be >= 1.")
+    if kl_weight < 0.0:
+        raise SystemExit("--kl-weight must be >= 0.")
     if not 0.0 < args.uncertainty_percentile < 100.0:
         raise SystemExit("--uncertainty-percentile must be in (0, 100).")
 
@@ -210,6 +238,8 @@ def main() -> None:
             num_workers=config["data"]["num_workers"],
             split=config["data"]["split"],
             seed=seed,
+            n_folds=args.n_folds,
+            fold=args.fold,
             sononet_dir=sononet_dir,
             conf_threshold=sononet_conf,
         )
@@ -304,14 +334,18 @@ def main() -> None:
         "dropout": dropout,
         "evidence_activation": evidence_activation,
         "annealing_epochs": annealing_epochs,
+        "kl_weight": kl_weight,
         "class_weighting": class_weighting,
         "seed": seed,
     }
+    # Tag the KL weight into the run name (kl0p10, kl0p00, ...) so the no-KL
+    # ablation and the tuned run don't overwrite each other's artifacts.
+    kl_tag = f"kl{kl_weight:.2f}".replace(".", "p")
     checkpoint_path = (
         Path("checkpoints")
         / (
             f"{args.output_prefix}_{args.pooling}_{evidence_activation}"
-            f"_ann{annealing_epochs}_edl_mlp.pt"
+            f"_ann{annealing_epochs}_{kl_tag}_edl_mlp.pt"
         )
     )
     model, _ = train_edl_mlp(
@@ -352,11 +386,14 @@ def main() -> None:
 
     summary = {
         "heldout_conditions": ",".join(split_info["heldout_conditions"]),
+        "fold": int(split_info.get("fold", 0)),
+        "n_folds": int(split_info.get("n_folds", 1)),
         "pooling": args.pooling,
         "classifier": "EvidentialMLP",
         "dropout": float(dropout),
         "evidence_activation": evidence_activation,
         "annealing_epochs": int(annealing_epochs),
+        "kl_weight": float(kl_weight),
         "class_weighting": bool(edl_config["class_weighting"]),
         "threshold": float(threshold),
         "uncertainty_percentile": float(args.uncertainty_percentile),
@@ -426,7 +463,7 @@ def main() -> None:
     results_dir.mkdir(exist_ok=True)
     result_stem = (
         f"{args.output_prefix}_{args.pooling}_{evidence_activation}"
-        f"_ann{annealing_epochs}"
+        f"_ann{annealing_epochs}_{kl_tag}"
     )
     summary_path = results_dir / f"{result_stem}_summary.csv"
     predictions_path = results_dir / f"{result_stem}_predictions.csv"

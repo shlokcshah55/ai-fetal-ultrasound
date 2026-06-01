@@ -21,6 +21,9 @@ class EvidentialMLP(nn.Module):
         evidence_activation: str = "softplus",
     ) -> None:
         super().__init__()
+        # softplus is the safe default. ReLU is collapse-prone: once a class's
+        # pre-activation goes negative the gradient through ReLU is zero (dead
+        # unit), so the minority head can permanently emit zero evidence.
         if evidence_activation == "relu":
             final_activation: nn.Module = nn.ReLU()
         elif evidence_activation == "softplus":
@@ -90,11 +93,22 @@ def edl_loss(
     *,
     num_classes: int = 2,
     annealing_epochs: int = 10,
+    kl_weight: float = 1.0,
     class_weights: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Sum-of-squares EDL loss with annealed KL regularisation."""
+    """Sum-of-squares EDL loss with annealed KL regularisation.
+
+    The KL-to-uniform regulariser drives evidence towards the vacuous Dirichlet.
+    Under heavy class imbalance it can overwhelm the (flat) data-fit gradient and
+    collapse every prediction to the uniform "I don't know" Dirichlet, so its
+    contribution is scaled by ``kl_weight`` on top of the linear annealing ramp:
+    effective coefficient = ``kl_weight * min(1, epoch / annealing_epochs)``.
+    Set ``kl_weight = 0`` to disable the regulariser entirely (ablation).
+    """
     if annealing_epochs < 1:
         raise ValueError("annealing_epochs must be >= 1.")
+    if kl_weight < 0.0:
+        raise ValueError("kl_weight must be >= 0.")
 
     labels = labels.long()
     alpha, strength, proba = evidence_to_dirichlet(evidence)
@@ -108,7 +122,7 @@ def edl_loss(
 
     alpha_tilde = targets + (1.0 - targets) * alpha
     loss_kl = edl_kl_divergence(alpha_tilde, num_classes=num_classes)
-    annealing_coef = min(1.0, float(epoch) / float(annealing_epochs))
+    annealing_coef = kl_weight * min(1.0, float(epoch) / float(annealing_epochs))
     loss = err + var + annealing_coef * loss_kl
 
     if class_weights is None:
@@ -191,9 +205,14 @@ def train_edl_mlp(
 
     class_weights = None
     if bool(config.get("class_weighting", True)):
+        # Inverse-frequency weighting, normalised so the *majority* class has
+        # weight 1 (i.e. the minority gets the full neg/pos up-weight, ~5.6x at
+        # ~85% prevalence). The previous mean-normalisation halved this signal,
+        # leaving the minority-class evidence gradient too weak to escape the
+        # uniform-Dirichlet collapse. This matches the working MLP's pos_weight.
         class_counts = np.bincount(y_train, minlength=2).astype(np.float32)
         weights = class_counts.sum() / np.maximum(class_counts, 1.0)
-        weights = weights / weights.mean()
+        weights = weights / weights.min()
         class_weights = torch.tensor(weights, dtype=torch.float32, device=device)
 
     optimizer = torch.optim.Adam(
@@ -216,6 +235,7 @@ def train_edl_mlp(
     max_epochs = int(config.get("epochs", config.get("mlp_epochs", 100)))
     patience = int(config.get("early_stopping_patience", 10))
     annealing_epochs = int(config.get("annealing_epochs", 10))
+    kl_weight = float(config.get("kl_weight", 1.0))
 
     best_val_auroc = -1.0
     patience_counter = 0
@@ -243,6 +263,7 @@ def train_edl_mlp(
                 loss_epoch,
                 num_classes=2,
                 annealing_epochs=annealing_epochs,
+                kl_weight=kl_weight,
                 class_weights=class_weights,
             )
             loss.backward()

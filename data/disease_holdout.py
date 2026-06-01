@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
@@ -83,6 +83,8 @@ def get_heldout_disease_dataloaders(
     num_workers: int = 4,
     split: list[float] | None = None,
     seed: int = 42,
+    n_folds: int = 1,
+    fold: int = 0,
     sononet_dir: str | None = None,
     conf_threshold: float = 0.5,
 ) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader, dict[str, Any]]:
@@ -151,7 +153,18 @@ def get_heldout_disease_dataloaders(
 
     id_df = df[df["disease_group"] != "heldout_disease"].reset_index(drop=True)
     heldout_df = df[df["disease_group"] == "heldout_disease"].reset_index(drop=True)
-    train_df, val_df, id_test_df = _subject_split(id_df, split, seed)
+    if n_folds > 1:
+        if not 0 <= fold < n_folds:
+            raise ValueError(f"fold must be in [0, {n_folds}); got {fold}")
+        # Keep val the same fraction of the total as the single-split config:
+        # test is now 1/n_folds, so the val fraction of the train_val pool is
+        # scaled up to preserve val's share of the whole ID set.
+        val_frac = split[1] / (1.0 - 1.0 / n_folds)
+        train_df, val_df, id_test_df = _subject_split_kfold(
+            id_df, n_folds=n_folds, fold=fold, val_frac=val_frac, seed=seed
+        )
+    else:
+        train_df, val_df, id_test_df = _subject_split(id_df, split, seed)
 
     train_loader = _build_loader(train_df, n_frames, batch_size, num_workers, is_train=True)
     val_loader = _build_loader(val_df, n_frames, batch_size, num_workers, is_train=False)
@@ -161,6 +174,8 @@ def get_heldout_disease_dataloaders(
     split_info: dict[str, Any] = {
         "heldout_conditions": heldout_conditions,
         "seen_conditions": seen_conditions,
+        "n_folds": int(n_folds),
+        "fold": int(fold) if n_folds > 1 else 0,
         "train_subjects": _subject_ids(train_df),
         "val_subjects": _subject_ids(val_df),
         "id_test_subjects": _subject_ids(id_test_df),
@@ -240,6 +255,50 @@ def _subject_split(
         test_size=val_ratio_of_train_val,
         random_state=seed,
     )
+    train_idx, val_idx = next(
+        gss_val.split(df_train_val, groups=df_train_val["subject_id"].values)
+    )
+
+    df_train = df_train_val.iloc[train_idx].reset_index(drop=True)
+    df_val = df_train_val.iloc[val_idx].reset_index(drop=True)
+
+    train_subjects = set(df_train["subject_id"].unique())
+    val_subjects = set(df_val["subject_id"].unique())
+    test_subjects = set(df_test["subject_id"].unique())
+    assert train_subjects.isdisjoint(val_subjects), "Subject leakage: train/val"
+    assert train_subjects.isdisjoint(test_subjects), "Subject leakage: train/test"
+    assert val_subjects.isdisjoint(test_subjects), "Subject leakage: val/test"
+
+    return df_train, df_val, df_test
+
+
+def _subject_split_kfold(
+    df: pd.DataFrame,
+    n_folds: int,
+    fold: int,
+    val_frac: float,
+    seed: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Subject-level, label-stratified K-fold split for a single fold.
+
+    Partitions the ID subjects into ``n_folds`` disjoint test folds with
+    StratifiedGroupKFold (subjects never cross folds, and the positive rate is
+    kept roughly even across folds). The requested ``fold`` becomes the test
+    set; the remaining folds form the train_val pool, from which a
+    subject-grouped validation set is carved. Folds are deterministic for a
+    given ``seed``, so every method sees identical partitions.
+    """
+    groups = df["subject_id"].values
+    labels = df["label"].values
+
+    skf = StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    splits = list(skf.split(df, y=labels, groups=groups))
+    train_val_idx, test_idx = splits[fold]
+
+    df_train_val = df.iloc[train_val_idx].reset_index(drop=True)
+    df_test = df.iloc[test_idx].reset_index(drop=True)
+
+    gss_val = GroupShuffleSplit(n_splits=1, test_size=val_frac, random_state=seed)
     train_idx, val_idx = next(
         gss_val.split(df_train_val, groups=df_train_val["subject_id"].values)
     )

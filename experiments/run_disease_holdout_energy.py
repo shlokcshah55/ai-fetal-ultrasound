@@ -135,12 +135,23 @@ def main() -> None:
     parser.add_argument("--no-sononet", action="store_true")
     parser.add_argument("--device", default=None)
     parser.add_argument("--output-prefix", default="heldout_disease_energy")
+    parser.add_argument("--n-folds", type=int, default=1, help="Number of CV folds (1 = single split).")
+    parser.add_argument("--fold", type=int, default=0, help="Which fold is the test set (0-indexed).")
     args = parser.parse_args()
 
     os.chdir(REPO_ROOT)
     config = load_config(args.config)
     seed = config["training"]["seed"]
     set_seeds(seed)
+
+    if args.n_folds < 1:
+        raise SystemExit("--n-folds must be >= 1.")
+    if not 0 <= args.fold < args.n_folds:
+        raise SystemExit(f"--fold must be in [0, {args.n_folds}); got {args.fold}.")
+    if args.n_folds > 1:
+        # Tag every output (checkpoints + results) with the fold so runs across
+        # folds don't overwrite each other.
+        args.output_prefix = f"{args.output_prefix}_fold{args.fold}of{args.n_folds}"
 
     if args.temperature <= 0.0:
         raise SystemExit("--temperature must be positive.")
@@ -177,6 +188,8 @@ def main() -> None:
             num_workers=config["data"]["num_workers"],
             split=config["data"]["split"],
             seed=seed,
+            n_folds=args.n_folds,
+            fold=args.fold,
             sononet_dir=sononet_dir,
             conf_threshold=sononet_conf,
         )
@@ -336,6 +349,8 @@ def main() -> None:
 
     summary = {
         "heldout_conditions": ",".join(split_info["heldout_conditions"]),
+        "fold": int(split_info.get("fold", 0)),
+        "n_folds": int(split_info.get("n_folds", 1)),
         "pooling": args.pooling,
         "classifier": "EnergyMLP",
         "temperature": float(args.temperature),
