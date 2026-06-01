@@ -31,13 +31,19 @@ class EvidentialMLP(nn.Module):
         else:
             raise ValueError("evidence_activation must be 'relu' or 'softplus'.")
 
+        # BatchNorm1d (not LayerNorm): per-sample LayerNorm renormalizes each
+        # input's penultimate activation to unit scale, which flattens the total
+        # Dirichlet strength S = sum(evidence) + K to a near-constant across all
+        # inputs. EDL's epistemic uncertainty u = K/S then cannot vary, killing the
+        # OOD signal. BatchNorm applies a fixed train-population transform at
+        # inference, so per-sample evidence magnitude (and thus S and u) survives.
         self.net = nn.Sequential(
             nn.Linear(input_dim, 256),
-            nn.LayerNorm(256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(256, 64),
-            nn.LayerNorm(64),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(64, 2),
@@ -228,7 +234,8 @@ def train_edl_mlp(
         TensorDataset(torch.from_numpy(x_train), torch.from_numpy(y_train)),
         batch_size=batch_size,
         shuffle=True,
-        drop_last=False,
+        # drop_last=True so BatchNorm1d never sees a size-1 final batch.
+        drop_last=True,
     )
     x_val_t = torch.from_numpy(x_val).to(device)
 
