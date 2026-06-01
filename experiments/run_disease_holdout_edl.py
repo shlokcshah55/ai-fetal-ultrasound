@@ -123,13 +123,18 @@ def main() -> None:
         ),
     )
     parser.add_argument("--pooling", choices=["mean", "max"], default="mean")
-    parser.add_argument("--dropout", type=float, default=0.3)
+    parser.add_argument("--dropout", type=float, default=None)
     parser.add_argument(
         "--evidence-activation",
         choices=["relu", "softplus"],
-        default="relu",
+        default=None,
     )
-    parser.add_argument("--annealing-epochs", type=int, default=10)
+    parser.add_argument("--annealing-epochs", type=int, default=None)
+    parser.add_argument(
+        "--no-class-weighting",
+        action="store_true",
+        help="Disable balanced class weighting in the EDL loss.",
+    )
     parser.add_argument("--uncertainty-percentile", type=float, default=95.0)
     parser.add_argument("--skip-extract", action="store_true")
     parser.add_argument("--extract-only", action="store_true")
@@ -152,9 +157,27 @@ def main() -> None:
     seed = config["training"]["seed"]
     set_seeds(seed)
 
-    if not 0.0 <= args.dropout < 1.0:
+    edl_base_config = config.get("edl", {})
+    dropout = (
+        float(args.dropout)
+        if args.dropout is not None
+        else float(edl_base_config.get("dropout", 0.3))
+    )
+    evidence_activation = args.evidence_activation or str(
+        edl_base_config.get("evidence_activation", "softplus")
+    )
+    annealing_epochs = (
+        int(args.annealing_epochs)
+        if args.annealing_epochs is not None
+        else int(edl_base_config.get("annealing_epochs", 25))
+    )
+    class_weighting = bool(edl_base_config.get("class_weighting", True))
+    if args.no_class_weighting:
+        class_weighting = False
+
+    if not 0.0 <= dropout < 1.0:
         raise SystemExit("--dropout must be in [0, 1).")
-    if args.annealing_epochs < 1:
+    if annealing_epochs < 1:
         raise SystemExit("--annealing-epochs must be >= 1.")
     if not 0.0 < args.uncertainty_percentile < 100.0:
         raise SystemExit("--uncertainty-percentile must be in (0, 100).")
@@ -278,16 +301,17 @@ def main() -> None:
     edl_config = {
         **config.get("training", {}),
         **config.get("edl", {}),
-        "dropout": args.dropout,
-        "evidence_activation": args.evidence_activation,
-        "annealing_epochs": args.annealing_epochs,
+        "dropout": dropout,
+        "evidence_activation": evidence_activation,
+        "annealing_epochs": annealing_epochs,
+        "class_weighting": class_weighting,
         "seed": seed,
     }
     checkpoint_path = (
         Path("checkpoints")
         / (
-            f"{args.output_prefix}_{args.pooling}_{args.evidence_activation}"
-            f"_ann{args.annealing_epochs}_edl_mlp.pt"
+            f"{args.output_prefix}_{args.pooling}_{evidence_activation}"
+            f"_ann{annealing_epochs}_edl_mlp.pt"
         )
     )
     model, _ = train_edl_mlp(
@@ -330,9 +354,10 @@ def main() -> None:
         "heldout_conditions": ",".join(split_info["heldout_conditions"]),
         "pooling": args.pooling,
         "classifier": "EvidentialMLP",
-        "dropout": float(args.dropout),
-        "evidence_activation": args.evidence_activation,
-        "annealing_epochs": int(args.annealing_epochs),
+        "dropout": float(dropout),
+        "evidence_activation": evidence_activation,
+        "annealing_epochs": int(annealing_epochs),
+        "class_weighting": bool(edl_config["class_weighting"]),
         "threshold": float(threshold),
         "uncertainty_percentile": float(args.uncertainty_percentile),
         "uncertainty_threshold_dirichlet": uncertainty_threshold,
@@ -400,8 +425,8 @@ def main() -> None:
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
     result_stem = (
-        f"{args.output_prefix}_{args.pooling}_{args.evidence_activation}"
-        f"_ann{args.annealing_epochs}"
+        f"{args.output_prefix}_{args.pooling}_{evidence_activation}"
+        f"_ann{annealing_epochs}"
     )
     summary_path = results_dir / f"{result_stem}_summary.csv"
     predictions_path = results_dir / f"{result_stem}_predictions.csv"

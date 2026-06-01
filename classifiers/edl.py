@@ -18,7 +18,7 @@ class EvidentialMLP(nn.Module):
         self,
         input_dim: int = 768,
         dropout: float = 0.3,
-        evidence_activation: str = "relu",
+        evidence_activation: str = "softplus",
     ) -> None:
         super().__init__()
         if evidence_activation == "relu":
@@ -90,6 +90,7 @@ def edl_loss(
     *,
     num_classes: int = 2,
     annealing_epochs: int = 10,
+    class_weights: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Sum-of-squares EDL loss with annealed KL regularisation."""
     if annealing_epochs < 1:
@@ -104,12 +105,19 @@ def edl_loss(
 
     err = (targets - proba).pow(2).sum(dim=1)
     var = (proba * (1.0 - proba) / (strength + 1.0)).sum(dim=1)
-    loss_mse = (err + var).mean()
 
     alpha_tilde = targets + (1.0 - targets) * alpha
-    loss_kl = edl_kl_divergence(alpha_tilde, num_classes=num_classes).mean()
+    loss_kl = edl_kl_divergence(alpha_tilde, num_classes=num_classes)
     annealing_coef = min(1.0, float(epoch) / float(annealing_epochs))
-    return loss_mse + annealing_coef * loss_kl
+    loss = err + var + annealing_coef * loss_kl
+
+    if class_weights is None:
+        return loss.mean()
+
+    sample_weights = class_weights.to(device=evidence.device, dtype=evidence.dtype)[
+        labels
+    ]
+    return (loss * sample_weights).sum() / sample_weights.sum().clamp_min(1e-12)
 
 
 def predict_edl(
@@ -178,8 +186,15 @@ def train_edl_mlp(
     model = EvidentialMLP(
         input_dim=input_dim,
         dropout=float(config.get("dropout", 0.3)),
-        evidence_activation=str(config.get("evidence_activation", "relu")),
+        evidence_activation=str(config.get("evidence_activation", "softplus")),
     ).to(device)
+
+    class_weights = None
+    if bool(config.get("class_weighting", True)):
+        class_counts = np.bincount(y_train, minlength=2).astype(np.float32)
+        weights = class_counts.sum() / np.maximum(class_counts, 1.0)
+        weights = weights / weights.mean()
+        class_weights = torch.tensor(weights, dtype=torch.float32, device=device)
 
     optimizer = torch.optim.Adam(
         model.parameters(),
@@ -228,6 +243,7 @@ def train_edl_mlp(
                 loss_epoch,
                 num_classes=2,
                 annealing_epochs=annealing_epochs,
+                class_weights=class_weights,
             )
             loss.backward()
             optimizer.step()
@@ -240,6 +256,8 @@ def train_edl_mlp(
             val_evidence = model(x_val_t)
             _, _, val_proba_t = evidence_to_dirichlet(val_evidence)
             val_proba = val_proba_t[:, 1].cpu().numpy()
+            val_evidence_mean = val_evidence.mean(dim=0).cpu().numpy()
+            val_proba_std = float(np.std(val_proba))
 
         try:
             val_auroc = float(roc_auc_score(y_val, val_proba))
@@ -253,6 +271,9 @@ def train_edl_mlp(
             epoch_iter.set_postfix(
                 loss=f"{avg_loss:.4f}",
                 val_auroc=f"{val_auroc:.4f}",
+                val_p_std=f"{val_proba_std:.4f}",
+                e0=f"{val_evidence_mean[0]:.3f}",
+                e1=f"{val_evidence_mean[1]:.3f}",
                 best=f"{best_val_auroc:.4f}",
             )
 

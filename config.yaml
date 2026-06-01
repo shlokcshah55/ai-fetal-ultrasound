@@ -41,6 +41,7 @@ edl:
   weight_decay: 1e-4
   batch_size: 64
   dropout: 0.3
-  evidence_activation: "relu"
-  annealing_epochs: 10
+  evidence_activation: "softplus"
+  annealing_epochs: 25
+  class_weighting: true
   early_stopping_patience: 10
