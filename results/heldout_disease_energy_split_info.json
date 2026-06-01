@@ -12,6 +12,8 @@
     "p_atresia",
     "p_stenosis"
   ],
+  "n_folds": 1,
+  "fold": 0,
   "train_subjects": [
     91,
     92,
