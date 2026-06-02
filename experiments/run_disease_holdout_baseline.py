@@ -15,10 +15,11 @@ import torch
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from aggregation.pooling import max_pool, mean_pool
+from aggregation.subject_pooling import pool_subject_features_with_paths
 from classifiers.knn import get_knn
 from classifiers.linear_probe import get_linear_svc, get_logistic_regression
 from classifiers.mlp import train_mlp
+from data.dataset import make_image_transform
 from data.disease_holdout import CONDITION_COLS, get_heldout_disease_dataloaders
 from evaluate import (
     evaluate,
@@ -26,7 +27,14 @@ from evaluate import (
     find_optimal_threshold,
     predictive_entropy,
 )
-from features.extract import extract_features, load_cached_features, load_dinov2
+from features.extract import (
+    checkpoint_id_from_path,
+    extract_features,
+    feature_cache_namespace,
+    load_cached_features,
+    load_frozen_backbone,
+    resolve_fetal_clip_config,
+)
 from run_baseline import (
     _missing_cache_loader,
     _sequential_loader,
@@ -43,29 +51,6 @@ DEFAULT_HELDOUT_DISEASES = [
 ]
 
 
-def pool_features_with_paths(
-    feature_dict: dict[str, tuple[np.ndarray, int]],
-    pooling: str,
-) -> tuple[list[str], np.ndarray, np.ndarray]:
-    paths: list[str] = []
-    x_list: list[np.ndarray] = []
-    y_list: list[int] = []
-
-    for video_path, (features, label) in feature_dict.items():
-        if pooling == "mean":
-            pooled = mean_pool(features)
-        elif pooling == "max":
-            pooled = max_pool(features)
-        else:
-            raise ValueError(f"Unsupported pooling for this baseline: {pooling}")
-
-        paths.append(video_path)
-        x_list.append(pooled)
-        y_list.append(label)
-
-    return paths, np.stack(x_list), np.array(y_list)
-
-
 def fit_classifier(
     classifier_name: str,
     x_train: np.ndarray,
@@ -76,6 +61,7 @@ def fit_classifier(
     device: torch.device,
     seed: int,
     checkpoint_path: Path,
+    input_dim: int,
 ) -> tuple[Any, np.ndarray]:
     if classifier_name == "LogisticRegression":
         clf = get_logistic_regression(seed=seed)
@@ -113,6 +99,7 @@ def fit_classifier(
             config=mlp_config,
             device=device,
             checkpoint_path=str(checkpoint_path),
+            input_dim=input_dim,
         )
         model.eval()
         with torch.no_grad():
@@ -137,29 +124,32 @@ def predict_classifier(
     return model.predict_proba(x)[:, 1]
 
 
-def metadata_by_path(loader: torch.utils.data.DataLoader) -> dict[str, dict[str, Any]]:
-    records = getattr(loader.dataset, "records", [])
-    return {record["video_path"]: record for record in records}
+def records_from_loader(loader: torch.utils.data.DataLoader) -> list[dict[str, Any]]:
+    records = getattr(loader.dataset, "records", None)
+    if not isinstance(records, list):
+        raise TypeError("Expected loader.dataset.records to be a list of dicts.")
+    return records
 
 
 def build_prediction_rows(
     split_name: str,
-    paths: list[str],
+    subject_ids: list[int],
     y_true: np.ndarray,
     y_proba: np.ndarray,
-    metadata: dict[str, dict[str, Any]],
+    metadata: dict[int, dict[str, Any]],
     threshold: float,
 ) -> list[dict[str, Any]]:
     uncertainty = predictive_entropy(y_proba)
     y_pred = (y_proba >= threshold).astype(int)
 
     rows: list[dict[str, Any]] = []
-    for path, label, proba, pred, unc in zip(paths, y_true, y_proba, y_pred, uncertainty):
-        record = metadata[path]
+    for subject_id, label, proba, pred, unc in zip(
+        subject_ids, y_true, y_proba, y_pred, uncertainty
+    ):
+        record = metadata[int(subject_id)]
         row = {
             "split": split_name,
-            "video_path": path,
-            "subject_id": record["subject_id"],
+            "subject_id": int(subject_id),
             "disease_group": record["disease_group"],
             "label": int(label),
             "pred_proba_chd": float(proba),
@@ -196,6 +186,15 @@ def main() -> None:
         ),
     )
     parser.add_argument("--pooling", choices=["mean", "max"], default="mean")
+    parser.add_argument("--backbone", choices=["dinov2", "fetal_clip"], default="dinov2")
+    parser.add_argument("--fetal-clip-checkpoint", default=None)
+    parser.add_argument("--fetal-clip-config", default=None)
+    parser.add_argument(
+        "--backbone-normalization",
+        choices=["auto", "imagenet", "clip"],
+        default="auto",
+        help="Frame normalization. auto = ImageNet for DINOv2, CLIP stats for FETAL-CLIP.",
+    )
     parser.add_argument(
         "--classifier",
         choices=["LogisticRegression", "LinearSVC", "MLP", "kNN"],
@@ -228,6 +227,9 @@ def main() -> None:
         raise SystemExit("--n-folds must be >= 1.")
     if not 0 <= args.fold < args.n_folds:
         raise SystemExit(f"--fold must be in [0, {args.n_folds}); got {args.fold}.")
+    if args.backbone == "fetal_clip" and args.fetal_clip_checkpoint is None:
+        raise SystemExit("--fetal-clip-checkpoint is required for --backbone fetal_clip.")
+    args.output_prefix = f"{args.output_prefix}_{args.backbone}"
     if args.n_folds > 1:
         # Tag every output (checkpoints + results) with the fold so runs across
         # folds don't overwrite each other.
@@ -250,6 +252,11 @@ def main() -> None:
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    normalization = args.backbone_normalization
+    if normalization == "auto":
+        normalization = "clip" if args.backbone == "fetal_clip" else "imagenet"
+    transform = make_image_transform(normalization)
+
     print("\n[1/5] Loading disease-held-out data...")
     train_loader, val_loader, id_test_loader, heldout_loader, split_info = (
         get_heldout_disease_dataloaders(
@@ -265,6 +272,7 @@ def main() -> None:
             fold=args.fold,
             sononet_dir=sononet_dir,
             conf_threshold=sononet_conf,
+            transform=transform,
         )
     )
     print(f"  Held-out diseases: {', '.join(split_info['heldout_conditions'])}")
@@ -282,7 +290,27 @@ def main() -> None:
         "heldout": _sequential_loader(heldout_loader),
     }
 
-    print("\n[2/5] Loading/extracting DINOv2 features...")
+    checkpoint_id = "facebookresearch_dinov2_vitb14"
+    if args.backbone == "fetal_clip":
+        args.fetal_clip_config = resolve_fetal_clip_config(
+            args.fetal_clip_checkpoint,
+            args.fetal_clip_config,
+        )
+        config_id = (
+            checkpoint_id_from_path(args.fetal_clip_config)
+            if args.fetal_clip_config is not None
+            else "no_config"
+        )
+        checkpoint_id = f"{checkpoint_id_from_path(args.fetal_clip_checkpoint)}_{config_id}"
+    backbone_meta = {
+        "backbone": args.backbone,
+        "checkpoint_id": checkpoint_id,
+        "cache_namespace": feature_cache_namespace(args.backbone, checkpoint_id),
+    }
+    print(
+        f"\n[2/5] Loading/extracting {args.backbone} features "
+        f"(checkpoint_id={backbone_meta['checkpoint_id']})..."
+    )
     features: dict[str, dict[str, tuple[np.ndarray, int]]] = {}
     if args.skip_extract:
         for split_name, loader in split_loaders.items():
@@ -290,9 +318,15 @@ def main() -> None:
                 _video_paths_from_loader(loader),
                 cache_dir,
                 split_name=split_name,
+                cache_namespace=backbone_meta["cache_namespace"],
             )
     else:
-        dinov2 = load_dinov2(device)
+        backbone_model, backbone_meta = load_frozen_backbone(
+            args.backbone,
+            device,
+            fetal_clip_checkpoint=args.fetal_clip_checkpoint,
+            fetal_clip_config=args.fetal_clip_config,
+        )
         for split_name, loader in split_loaders.items():
             if split_name not in args.extract_splits:
                 print(f"  Skipping {split_name}; split not requested.")
@@ -300,8 +334,19 @@ def main() -> None:
                 continue
             extract_loader = loader
             if args.extract_only:
-                extract_loader = _missing_cache_loader(loader, cache_dir, split_name)
-            features[split_name] = extract_features(extract_loader, dinov2, device, cache_dir)
+                extract_loader = _missing_cache_loader(
+                    loader,
+                    cache_dir,
+                    split_name,
+                    backbone_meta["cache_namespace"],
+                )
+            features[split_name] = extract_features(
+                extract_loader,
+                backbone_model,
+                device,
+                cache_dir,
+                cache_namespace=backbone_meta["cache_namespace"],
+            )
 
     print(
         "  Videos - "
@@ -312,11 +357,30 @@ def main() -> None:
         print("\nExtract-only mode: done after feature caching.")
         return
 
-    print("\n[3/5] Pooling features...")
-    _, x_train, y_train = pool_features_with_paths(features["train"], args.pooling)
-    _, x_val, y_val = pool_features_with_paths(features["val"], args.pooling)
-    id_paths, x_id, y_id = pool_features_with_paths(features["id_test"], args.pooling)
-    heldout_paths, x_heldout, y_heldout = pool_features_with_paths(features["heldout"], args.pooling)
+    print("\n[3/5] Pooling videos to subject embeddings...")
+    train_subjects, x_train, y_train, _ = pool_subject_features_with_paths(
+        features["train"],
+        records_from_loader(split_loaders["train"]),
+        video_pooling=args.pooling,
+    )
+    val_subjects, x_val, y_val, _ = pool_subject_features_with_paths(
+        features["val"],
+        records_from_loader(split_loaders["val"]),
+        video_pooling=args.pooling,
+    )
+    id_subjects, x_id, y_id, id_metadata = pool_subject_features_with_paths(
+        features["id_test"],
+        records_from_loader(split_loaders["id_test"]),
+        video_pooling=args.pooling,
+    )
+    heldout_subjects, x_heldout, y_heldout, heldout_metadata = (
+        pool_subject_features_with_paths(
+            features["heldout"],
+            records_from_loader(split_loaders["heldout"]),
+            video_pooling=args.pooling,
+        )
+    )
+    embedding_dim = int(x_train.shape[1])
 
     print("\n[4/5] Training baseline classifier...")
     Path("checkpoints").mkdir(exist_ok=True)
@@ -337,6 +401,7 @@ def main() -> None:
         device,
         seed,
         checkpoint_path,
+        embedding_dim,
     )
     threshold = find_optimal_threshold(y_val, val_proba)
 
@@ -359,6 +424,9 @@ def main() -> None:
 
     summary = {
         "heldout_conditions": ",".join(split_info["heldout_conditions"]),
+        "backbone": args.backbone,
+        "embedding_dim": embedding_dim,
+        "checkpoint_id": backbone_meta["checkpoint_id"],
         "fold": int(split_info.get("fold", 0)),
         "n_folds": int(split_info.get("n_folds", 1)),
         "pooling": args.pooling,
@@ -378,20 +446,24 @@ def main() -> None:
         "heldout_uncertainty_mean": safe_mean(heldout_uncertainty),
         **ood_metrics,
         **split_info["counts"],
+        "train_subjects_pooled": len(train_subjects),
+        "val_subjects_pooled": len(val_subjects),
+        "id_test_subjects_pooled": len(id_subjects),
+        "heldout_subjects_pooled": len(heldout_subjects),
     }
 
     metadata = {}
-    for loader in [id_test_loader, heldout_loader]:
-        metadata.update(metadata_by_path(loader))
+    metadata.update(id_metadata)
+    metadata.update(heldout_metadata)
 
     prediction_rows = []
     prediction_rows.extend(
-        build_prediction_rows("id_test", id_paths, y_id, id_proba, metadata, threshold)
+        build_prediction_rows("id_test", id_subjects, y_id, id_proba, metadata, threshold)
     )
     prediction_rows.extend(
         build_prediction_rows(
             "heldout_disease",
-            heldout_paths,
+            heldout_subjects,
             y_heldout,
             heldout_proba,
             metadata,

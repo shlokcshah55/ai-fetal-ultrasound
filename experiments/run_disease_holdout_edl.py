@@ -17,6 +17,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from aggregation.subject_pooling import pool_subject_features_with_paths
 from calibration import apply_temperature, binary_logit_from_proba, fit_temperature
 from classifiers.edl import predict_edl, predict_edl_mc, train_edl_mlp
+from data.dataset import make_image_transform
 from data.disease_holdout import CONDITION_COLS, get_heldout_disease_dataloaders
 from evaluate import (
     evaluate,
@@ -24,7 +25,14 @@ from evaluate import (
     expected_calibration_error,
     find_optimal_threshold,
 )
-from features.extract import extract_features, load_cached_features, load_dinov2
+from features.extract import (
+    checkpoint_id_from_path,
+    extract_features,
+    feature_cache_namespace,
+    load_cached_features,
+    load_frozen_backbone,
+    resolve_fetal_clip_config,
+)
 from run_baseline import (
     _missing_cache_loader,
     _sequential_loader,
@@ -131,6 +139,15 @@ def main() -> None:
         ),
     )
     parser.add_argument("--pooling", choices=["mean", "max"], default="mean")
+    parser.add_argument("--backbone", choices=["dinov2", "fetal_clip"], default="dinov2")
+    parser.add_argument("--fetal-clip-checkpoint", default=None)
+    parser.add_argument("--fetal-clip-config", default=None)
+    parser.add_argument(
+        "--backbone-normalization",
+        choices=["auto", "imagenet", "clip"],
+        default="auto",
+        help="Frame normalization. auto = ImageNet for DINOv2, CLIP stats for FETAL-CLIP.",
+    )
     parser.add_argument("--dropout", type=float, default=None)
     parser.add_argument(
         "--evidence-activation",
@@ -191,6 +208,9 @@ def main() -> None:
         raise SystemExit("--n-folds must be >= 1.")
     if not 0 <= args.fold < args.n_folds:
         raise SystemExit(f"--fold must be in [0, {args.n_folds}); got {args.fold}.")
+    if args.backbone == "fetal_clip" and args.fetal_clip_checkpoint is None:
+        raise SystemExit("--fetal-clip-checkpoint is required for --backbone fetal_clip.")
+    args.output_prefix = f"{args.output_prefix}_{args.backbone}"
     if args.n_folds > 1:
         # Tag every output (checkpoints + results) with the fold so runs across
         # folds don't overwrite each other.
@@ -245,6 +265,11 @@ def main() -> None:
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    normalization = args.backbone_normalization
+    if normalization == "auto":
+        normalization = "clip" if args.backbone == "fetal_clip" else "imagenet"
+    transform = make_image_transform(normalization)
+
     print("\n[1/5] Loading disease-held-out data...")
     train_loader, val_loader, id_test_loader, heldout_loader, split_info = (
         get_heldout_disease_dataloaders(
@@ -260,6 +285,7 @@ def main() -> None:
             fold=args.fold,
             sononet_dir=sononet_dir,
             conf_threshold=sononet_conf,
+            transform=transform,
         )
     )
     print(f"  Held-out diseases: {', '.join(split_info['heldout_conditions'])}")
@@ -277,7 +303,27 @@ def main() -> None:
         "heldout": _sequential_loader(heldout_loader),
     }
 
-    print("\n[2/5] Loading/extracting DINOv2 features...")
+    checkpoint_id = "facebookresearch_dinov2_vitb14"
+    if args.backbone == "fetal_clip":
+        args.fetal_clip_config = resolve_fetal_clip_config(
+            args.fetal_clip_checkpoint,
+            args.fetal_clip_config,
+        )
+        config_id = (
+            checkpoint_id_from_path(args.fetal_clip_config)
+            if args.fetal_clip_config is not None
+            else "no_config"
+        )
+        checkpoint_id = f"{checkpoint_id_from_path(args.fetal_clip_checkpoint)}_{config_id}"
+    backbone_meta = {
+        "backbone": args.backbone,
+        "checkpoint_id": checkpoint_id,
+        "cache_namespace": feature_cache_namespace(args.backbone, checkpoint_id),
+    }
+    print(
+        f"\n[2/5] Loading/extracting {args.backbone} features "
+        f"(checkpoint_id={backbone_meta['checkpoint_id']})..."
+    )
     features: dict[str, dict[str, tuple[np.ndarray, int]]] = {}
     if args.skip_extract:
         for split_name, loader in split_loaders.items():
@@ -285,9 +331,15 @@ def main() -> None:
                 _video_paths_from_loader(loader),
                 cache_dir,
                 split_name=split_name,
+                cache_namespace=backbone_meta["cache_namespace"],
             )
     else:
-        dinov2 = load_dinov2(device)
+        backbone_model, backbone_meta = load_frozen_backbone(
+            args.backbone,
+            device,
+            fetal_clip_checkpoint=args.fetal_clip_checkpoint,
+            fetal_clip_config=args.fetal_clip_config,
+        )
         for split_name, loader in split_loaders.items():
             if split_name not in args.extract_splits:
                 print(f"  Skipping {split_name}; split not requested.")
@@ -295,12 +347,18 @@ def main() -> None:
                 continue
             extract_loader = loader
             if args.extract_only:
-                extract_loader = _missing_cache_loader(loader, cache_dir, split_name)
+                extract_loader = _missing_cache_loader(
+                    loader,
+                    cache_dir,
+                    split_name,
+                    backbone_meta["cache_namespace"],
+                )
             features[split_name] = extract_features(
                 extract_loader,
-                dinov2,
+                backbone_model,
                 device,
                 cache_dir,
+                cache_namespace=backbone_meta["cache_namespace"],
             )
 
     print(
@@ -343,6 +401,7 @@ def main() -> None:
         f"train: {len(train_subjects)}, val: {len(val_subjects)}, "
         f"id_test: {len(id_subjects)}, heldout: {len(heldout_subjects)}"
     )
+    embedding_dim = int(x_train.shape[1])
 
     print("\n[4/5] Training evidential MLP...")
     Path("checkpoints").mkdir(exist_ok=True)
@@ -374,6 +433,7 @@ def main() -> None:
         config=edl_config,
         device=device,
         checkpoint_path=str(checkpoint_path),
+        input_dim=embedding_dim,
     )
 
     print("\n[5/5] Evaluating EDL uncertainty...")
@@ -449,6 +509,9 @@ def main() -> None:
 
     summary = {
         "heldout_conditions": ",".join(split_info["heldout_conditions"]),
+        "backbone": args.backbone,
+        "embedding_dim": embedding_dim,
+        "checkpoint_id": backbone_meta["checkpoint_id"],
         "fold": int(split_info.get("fold", 0)),
         "n_folds": int(split_info.get("n_folds", 1)),
         "pooling": args.pooling,

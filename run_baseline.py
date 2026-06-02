@@ -14,7 +14,12 @@ import joblib
 from tqdm import tqdm
 
 from data.dataset import get_dataloaders
-from features.extract import load_dinov2, extract_features, load_cached_features
+from features.extract import (
+    extract_features,
+    feature_cache_stem,
+    load_cached_features,
+    load_dinov2,
+)
 from aggregation.pooling import mean_pool, max_pool, AttentionPooling, attention_pool
 from classifiers.linear_probe import get_logistic_regression, get_linear_svc
 from classifiers.knn import get_knn
@@ -280,7 +285,12 @@ def _sequential_loader(loader):
     )
 
 
-def _missing_cache_loader(loader, cache_dir: str, split_name: str):
+def _missing_cache_loader(
+    loader,
+    cache_dir: str,
+    split_name: str,
+    cache_namespace: str | None = None,
+):
     """Create a loader containing only videos without cached feature files."""
     from torch.utils.data import DataLoader
 
@@ -293,7 +303,7 @@ def _missing_cache_loader(loader, cache_dir: str, split_name: str):
     missing_records = []
     for record in records:
         video_path = record["video_path"]
-        cache_key = hashlib.md5(video_path.encode()).hexdigest()
+        cache_key = feature_cache_stem(video_path, cache_namespace)
         feat_file = cache_path / f"{cache_key}.npy"
         label_file = cache_path / f"{cache_key}_label.npy"
         if not (feat_file.exists() and label_file.exists()):

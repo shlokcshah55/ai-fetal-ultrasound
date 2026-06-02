@@ -30,12 +30,32 @@ def collate_variable_frames(
     return frames_list, labels, paths
 
 
-_TRANSFORM = transforms.Compose([
-    transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
+CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
+
+
+def make_image_transform(normalization: str = "imagenet") -> transforms.Compose:
+    """Build the frame transform used before frozen-backbone extraction."""
+    if normalization == "imagenet":
+        mean = IMAGENET_MEAN
+        std = IMAGENET_STD
+    elif normalization == "clip":
+        mean = CLIP_MEAN
+        std = CLIP_STD
+    else:
+        raise ValueError("normalization must be 'imagenet' or 'clip'.")
+
+    return transforms.Compose([
+        transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
+
+
+_TRANSFORM = make_image_transform("imagenet")
 
 
 class VideoDataset(Dataset):

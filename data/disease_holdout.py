@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold
 from torch.utils.data import DataLoader, WeightedRandomSampler
+from torchvision import transforms
 from tqdm import tqdm
 
 from data.dataset import VideoDataset, collate_variable_frames
@@ -87,6 +88,7 @@ def get_heldout_disease_dataloaders(
     fold: int = 0,
     sononet_dir: str | None = None,
     conf_threshold: float = 0.5,
+    transform: transforms.Compose | None = None,
 ) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader, dict[str, Any]]:
     """Build dataloaders for a disease-held-out uncertainty experiment.
 
@@ -166,10 +168,38 @@ def get_heldout_disease_dataloaders(
     else:
         train_df, val_df, id_test_df = _subject_split(id_df, split, seed)
 
-    train_loader = _build_loader(train_df, n_frames, batch_size, num_workers, is_train=True)
-    val_loader = _build_loader(val_df, n_frames, batch_size, num_workers, is_train=False)
-    id_test_loader = _build_loader(id_test_df, n_frames, batch_size, num_workers, is_train=False)
-    heldout_loader = _build_loader(heldout_df, n_frames, batch_size, num_workers, is_train=False)
+    train_loader = _build_loader(
+        train_df,
+        n_frames,
+        batch_size,
+        num_workers,
+        is_train=True,
+        transform=transform,
+    )
+    val_loader = _build_loader(
+        val_df,
+        n_frames,
+        batch_size,
+        num_workers,
+        is_train=False,
+        transform=transform,
+    )
+    id_test_loader = _build_loader(
+        id_test_df,
+        n_frames,
+        batch_size,
+        num_workers,
+        is_train=False,
+        transform=transform,
+    )
+    heldout_loader = _build_loader(
+        heldout_df,
+        n_frames,
+        batch_size,
+        num_workers,
+        is_train=False,
+        transform=transform,
+    )
 
     split_info: dict[str, Any] = {
         "heldout_conditions": heldout_conditions,
@@ -323,9 +353,10 @@ def _build_loader(
     num_workers: int,
     *,
     is_train: bool,
+    transform: transforms.Compose | None = None,
 ) -> DataLoader:
     records = _to_records(df)
-    dataset = VideoDataset(records, n_frames=n_frames)
+    dataset = VideoDataset(records, n_frames=n_frames, transform=transform)
 
     sampler = None
     if is_train:
