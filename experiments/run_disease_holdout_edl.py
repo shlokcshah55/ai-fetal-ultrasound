@@ -15,9 +15,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from aggregation.subject_pooling import pool_subject_features_with_paths
-from classifiers.edl import predict_edl, train_edl_mlp
+from calibration import apply_temperature, binary_logit_from_proba, fit_temperature
+from classifiers.edl import predict_edl, predict_edl_mc, train_edl_mlp
 from data.disease_holdout import CONDITION_COLS, get_heldout_disease_dataloaders
-from evaluate import evaluate, evaluate_uncertainty_as_ood, find_optimal_threshold
+from evaluate import (
+    evaluate,
+    evaluate_uncertainty_as_ood,
+    expected_calibration_error,
+    find_optimal_threshold,
+)
 from features.extract import extract_features, load_cached_features, load_dinov2
 from run_baseline import (
     _missing_cache_loader,
@@ -72,6 +78,7 @@ def build_prediction_rows(
     uncertainty_threshold: float,
 ) -> list[dict[str, Any]]:
     y_proba = edl_outputs["proba"]
+    y_proba_cal = edl_outputs["proba_calibrated"]
     uncertainty = edl_outputs["uncertainty"]
     evidence = edl_outputs["evidence"]
     alpha = edl_outputs["alpha"]
@@ -88,6 +95,7 @@ def build_prediction_rows(
             "disease_group": record["disease_group"],
             "label": int(y_true[idx]),
             "pred_proba_chd": float(y_proba[idx]),
+            "pred_proba_chd_calibrated": float(y_proba_cal[idx]),
             "pred_label": int(y_pred[idx]),
             "uncertainty_dirichlet": float(uncertainty[idx]),
             "uncertain_at_tau": int(is_uncertain[idx]),
@@ -146,6 +154,16 @@ def main() -> None:
         help="Disable balanced class weighting in the EDL loss.",
     )
     parser.add_argument("--uncertainty-percentile", type=float, default=95.0)
+    parser.add_argument(
+        "--mc-passes",
+        type=int,
+        default=1,
+        help=(
+            "MC-dropout passes for the sampling ablation. 1 = single deterministic "
+            "EDL pass (default). >1 enables stochastic dropout sampling over the "
+            "evidential model and reports entropy/MI/proba-std OOD signals."
+        ),
+    )
     parser.add_argument("--skip-extract", action="store_true")
     parser.add_argument("--extract-only", action="store_true")
     parser.add_argument(
@@ -359,17 +377,54 @@ def main() -> None:
     )
 
     print("\n[5/5] Evaluating EDL uncertainty...")
-    val_edl = predict_edl(model, x_val, device)
+    if args.mc_passes < 1:
+        raise SystemExit("--mc-passes must be >= 1.")
+    if args.mc_passes > 1:
+        print(f"  MC-dropout over EDL with {args.mc_passes} passes.")
+
+        def _predict(x: np.ndarray) -> dict:
+            return predict_edl_mc(model, x, device, mc_passes=args.mc_passes)
+    else:
+        def _predict(x: np.ndarray) -> dict:
+            return predict_edl(model, x, device)
+
+    val_edl = _predict(x_val)
     threshold = safe_classification_threshold(y_val, val_edl["proba"])
     uncertainty_threshold = float(
         np.percentile(val_edl["uncertainty"], args.uncertainty_percentile)
     )
 
-    id_edl = predict_edl(model, x_id, device)
-    heldout_edl = predict_edl(model, x_heldout, device)
+    id_edl = _predict(x_id)
+    heldout_edl = _predict(x_heldout)
+
+    # Post-hoc temperature scaling (Guo et al. 2017). Fit a single scalar on the
+    # in-distribution VAL split only (never on the held-out OOD set), acting on
+    # the effective binary logit log(p/(1-p)) implied by the Dirichlet mean. This
+    # calibrates the predictive probability (ECE) without touching the evidential
+    # vacuity u = K/S that drives OOD detection. T is monotonic in the score, so
+    # AUROC/AUPRC are unchanged; only ECE/threshold-dependent metrics move.
+    temperature = fit_temperature(
+        binary_logit_from_proba(val_edl["proba"]),
+        y_val,
+    )
+    id_proba_cal = apply_temperature(
+        binary_logit_from_proba(id_edl["proba"]), temperature
+    )
+    heldout_proba_cal = apply_temperature(
+        binary_logit_from_proba(heldout_edl["proba"]), temperature
+    )
 
     combined_y = np.concatenate([y_id, y_heldout])
     combined_proba = np.concatenate([id_edl["proba"], heldout_edl["proba"]])
+
+    id_edl["proba_calibrated"] = id_proba_cal
+    heldout_edl["proba_calibrated"] = heldout_proba_cal
+
+    combined_proba_cal = np.concatenate([id_proba_cal, heldout_proba_cal])
+    id_ece_uncalibrated = expected_calibration_error(y_id, id_edl["proba"])
+    id_ece_calibrated = expected_calibration_error(y_id, id_proba_cal)
+    combined_ece_uncalibrated = expected_calibration_error(combined_y, combined_proba)
+    combined_ece_calibrated = expected_calibration_error(combined_y, combined_proba_cal)
 
     id_metrics = evaluate(y_id, id_edl["proba"], threshold=threshold)
     combined_metrics = evaluate(combined_y, combined_proba, threshold=threshold)
@@ -377,6 +432,14 @@ def main() -> None:
         id_edl["uncertainty"],
         heldout_edl["uncertainty"],
     )
+
+    # With MC sampling, also score the sample-derived signals as OOD detectors
+    # (these, unlike the analytic vacuity, are what the sample count T affects).
+    sampling_ood_metrics: dict[str, float] = {}
+    if args.mc_passes > 1:
+        for prefix, key in (("entropy", "entropy"), ("mutual_info", "mutual_info"), ("proba_std", "proba_std")):
+            scored = evaluate_uncertainty_as_ood(id_edl[key], heldout_edl[key])
+            sampling_ood_metrics.update({f"{prefix}_{k}": v for k, v in scored.items()})
 
     normal_uncertainty = id_edl["uncertainty"][y_id == 0]
     seen_disease_uncertainty = id_edl["uncertainty"][y_id == 1]
@@ -390,12 +453,18 @@ def main() -> None:
         "n_folds": int(split_info.get("n_folds", 1)),
         "pooling": args.pooling,
         "classifier": "EvidentialMLP",
+        "mc_passes": int(args.mc_passes),
         "dropout": float(dropout),
         "evidence_activation": evidence_activation,
         "annealing_epochs": int(annealing_epochs),
         "kl_weight": float(kl_weight),
         "class_weighting": bool(edl_config["class_weighting"]),
         "threshold": float(threshold),
+        "temperature": float(temperature),
+        "id_ece_uncalibrated": float(id_ece_uncalibrated),
+        "id_ece_calibrated": float(id_ece_calibrated),
+        "combined_ece_uncalibrated": float(combined_ece_uncalibrated),
+        "combined_ece_calibrated": float(combined_ece_calibrated),
         "uncertainty_percentile": float(args.uncertainty_percentile),
         "uncertainty_threshold_dirichlet": uncertainty_threshold,
         "id_auroc": id_metrics["auroc"],
@@ -424,6 +493,7 @@ def main() -> None:
             id_uncertain_flags[y_id == 1]
         ),
         **uncertainty_ood_metrics,
+        **sampling_ood_metrics,
         **split_info["counts"],
         "train_subjects_pooled": len(train_subjects),
         "val_subjects_pooled": len(val_subjects),
@@ -461,9 +531,10 @@ def main() -> None:
 
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
+    mc_tag = f"_T{args.mc_passes}" if args.mc_passes > 1 else ""
     result_stem = (
         f"{args.output_prefix}_{args.pooling}_{evidence_activation}"
-        f"_ann{annealing_epochs}_{kl_tag}"
+        f"_ann{annealing_epochs}_{kl_tag}{mc_tag}"
     )
     summary_path = results_dir / f"{result_stem}_summary.csv"
     predictions_path = results_dir / f"{result_stem}_predictions.csv"
@@ -482,6 +553,8 @@ def main() -> None:
         "Key result: "
         f"ID AUROC={summary['id_auroc']:.4f}, "
         f"OOD AUROC by EDL uncertainty={summary['ood_auroc']:.4f}, "
+        f"ID ECE {summary['id_ece_uncalibrated']:.4f}->"
+        f"{summary['id_ece_calibrated']:.4f} (T={summary['temperature']:.3f}), "
         f"heldout uncertainty mean="
         f"{summary['heldout_uncertainty_dirichlet_mean']:.4f}, "
         f"heldout uncertain@tau={summary['heldout_uncertain_rate_at_tau']:.4f}"

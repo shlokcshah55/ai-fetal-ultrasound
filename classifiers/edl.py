@@ -183,6 +183,90 @@ def predict_edl(
     }
 
 
+def _enable_mc_dropout(model: nn.Module) -> None:
+    """Eval mode for deterministic layers (incl. BatchNorm running stats) while
+    keeping Dropout stochastic, so repeated forward passes give MC samples."""
+    model.eval()
+    for module in model.modules():
+        if isinstance(module, nn.Dropout):
+            module.train()
+
+
+def _binary_entropy(p: np.ndarray, eps: float = 1e-8) -> np.ndarray:
+    """Binary predictive entropy normalised to [0, 1] (matches evaluate.predictive_entropy)."""
+    p = np.clip(np.asarray(p, dtype=float), eps, 1.0 - eps)
+    return -(p * np.log(p) + (1.0 - p) * np.log(1.0 - p)) / np.log(2.0)
+
+
+def predict_edl_mc(
+    model: EvidentialMLP,
+    x: np.ndarray,
+    device: torch.device,
+    *,
+    mc_passes: int = 50,
+    batch_size: int = 512,
+    num_classes: int = 2,
+) -> dict[str, np.ndarray]:
+    """MC-dropout inference over the evidential model (sample-count ablation).
+
+    Runs ``mc_passes`` stochastic forward passes with dropout enabled (BatchNorm
+    kept in eval), then aggregates. Returns the mean Dirichlet quantities (same
+    keys as ``predict_edl``: proba, uncertainty, evidence, alpha, strength) plus
+    the MC-derived signals (predictive entropy, expected entropy, mutual
+    information, proba std) so EDL can be ablated on sample count exactly like MC
+    dropout. ``uncertainty`` stays the native Dirichlet vacuity (K/S of the mean
+    evidence); the MC signals are reported separately.
+    """
+    if mc_passes < 1:
+        raise ValueError("mc_passes must be >= 1.")
+    x = np.asarray(x, dtype=np.float32)
+    loader = DataLoader(
+        TensorDataset(torch.from_numpy(x)),
+        batch_size=batch_size,
+        shuffle=False,
+        drop_last=False,
+    )
+
+    proba_passes: list[np.ndarray] = []
+    evidence_passes: list[np.ndarray] = []
+    _enable_mc_dropout(model)
+    with torch.no_grad():
+        for _ in range(mc_passes):
+            proba_batches: list[np.ndarray] = []
+            evidence_batches: list[np.ndarray] = []
+            for (x_batch,) in loader:
+                evidence = model(x_batch.to(device))
+                _, _, proba = evidence_to_dirichlet(evidence)
+                proba_batches.append(proba[:, 1].cpu().numpy())
+                evidence_batches.append(evidence.cpu().numpy())
+            proba_passes.append(np.concatenate(proba_batches, axis=0))
+            evidence_passes.append(np.concatenate(evidence_batches, axis=0))
+
+    proba_samples = np.stack(proba_passes, axis=0)        # (T, N)
+    evidence_samples = np.stack(evidence_passes, axis=0)  # (T, N, K)
+    mean_evidence = evidence_samples.mean(axis=0)         # (N, K)
+    mean_alpha = mean_evidence + 1.0
+    mean_strength = mean_alpha.sum(axis=1)                # (N,)
+
+    mean_proba = proba_samples.mean(axis=0)
+    entropy = _binary_entropy(mean_proba)
+    expected_entropy = _binary_entropy(proba_samples).mean(axis=0)
+    mutual_info = entropy - expected_entropy
+    proba_std = proba_samples.std(axis=0)
+
+    return {
+        "proba": mean_proba,
+        "uncertainty": float(num_classes) / mean_strength,  # mean Dirichlet vacuity
+        "evidence": mean_evidence,
+        "alpha": mean_alpha,
+        "strength": mean_strength,
+        "entropy": entropy,
+        "expected_entropy": expected_entropy,
+        "mutual_info": mutual_info,
+        "proba_std": proba_std,
+    }
+
+
 def train_edl_mlp(
     x_train: np.ndarray,
     y_train: np.ndarray,

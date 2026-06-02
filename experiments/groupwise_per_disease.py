@@ -132,6 +132,12 @@ def main() -> None:
     )
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--tau-percentile", type=float, default=95.0)
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=None,
+        help="Keep only the N most prevalent diseases per method (default: all 9).",
+    )
     parser.add_argument("--out", default=None, help="Output CSV (default results/groupwise_per_disease.csv).")
     parser.add_argument("--decimals", type=int, default=3)
     args = parser.parse_args()
@@ -154,6 +160,8 @@ def main() -> None:
         per_fold = [per_fold_disease_metrics(df, score_col, args.tau_percentile) for df in frames]
         # Most-prevalent first.
         diseases = sorted(kinds, key=lambda d: -sum(pf.get(d, {}).get("n", 0) for pf in per_fold))
+        if args.top_n is not None:
+            diseases = diseases[: args.top_n]
 
         for d in diseases:
             n_vals = [pf[d]["n"] for pf in per_fold if d in pf]

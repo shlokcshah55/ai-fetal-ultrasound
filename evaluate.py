@@ -93,6 +93,50 @@ def predictive_entropy(
     return entropy / np.log(2.0)
 
 
+def expected_calibration_error(
+    y_true: np.ndarray,
+    y_pred_proba: np.ndarray,
+    n_bins: int = 15,
+) -> float:
+    """Expected Calibration Error (Guo et al. 2017), equal-width confidence bins.
+
+    For binary classification we treat ``y_pred_proba`` as the model's
+    confidence in the positive class. Within each bin the calibration gap is
+    |mean predicted probability - empirical positive rate|, weighted by the
+    fraction of samples in the bin. Temperature scaling should reduce this
+    without affecting any ranking-based metric (AUROC/AUPRC).
+
+    Args:
+        y_true: Ground-truth binary labels (0 or 1).
+        y_pred_proba: Predicted probabilities for the positive class.
+        n_bins: Number of equal-width bins over [0, 1].
+
+    Returns:
+        ECE in [0, 1]; lower is better.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred_proba = np.asarray(y_pred_proba, dtype=float)
+    if y_true.size == 0:
+        return float("nan")
+
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    n = y_true.size
+    for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
+        # Left-open bins, with the first bin including 0.0.
+        if lo == 0.0:
+            mask = (y_pred_proba >= lo) & (y_pred_proba <= hi)
+        else:
+            mask = (y_pred_proba > lo) & (y_pred_proba <= hi)
+        bin_count = int(mask.sum())
+        if bin_count == 0:
+            continue
+        confidence = float(y_pred_proba[mask].mean())
+        accuracy = float(y_true[mask].mean())  # empirical positive rate
+        ece += (bin_count / n) * abs(accuracy - confidence)
+    return float(ece)
+
+
 def evaluate_uncertainty_as_ood(
     id_uncertainty: np.ndarray,
     ood_uncertainty: np.ndarray,
