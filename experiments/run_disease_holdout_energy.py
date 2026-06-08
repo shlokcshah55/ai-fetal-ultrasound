@@ -10,15 +10,29 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
+from sklearn.metrics import average_precision_score, roc_auc_score, roc_curve
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from aggregation.subject_pooling import pool_subject_features_with_paths
 from classifiers.energy import predict_energy, train_energy_mlp
+from data.dataset import make_image_transform
 from data.disease_holdout import CONDITION_COLS, get_heldout_disease_dataloaders
-from evaluate import evaluate, evaluate_uncertainty_as_ood, find_optimal_threshold
-from features.extract import extract_features, load_cached_features, load_dinov2
+from evaluate import (
+    evaluate,
+    evaluate_uncertainty_as_ood,
+    expected_calibration_error,
+    find_optimal_threshold,
+)
+from features.extract import (
+    checkpoint_id_from_path,
+    extract_features,
+    feature_cache_namespace,
+    load_cached_features,
+    load_frozen_backbone,
+    resolve_fetal_clip_config,
+)
 from run_baseline import (
     _missing_cache_loader,
     _sequential_loader,
@@ -60,6 +74,117 @@ def safe_classification_threshold(y_true: np.ndarray, y_proba: np.ndarray) -> fl
     if len(np.unique(y_true)) < 2:
         return 0.5
     return find_optimal_threshold(y_true, y_proba)
+
+
+def fpr_at_tpr(
+    id_score: np.ndarray,
+    ood_score: np.ndarray,
+    *,
+    target_tpr: float = 0.95,
+) -> float:
+    id_score = np.asarray(id_score, dtype=float)
+    ood_score = np.asarray(ood_score, dtype=float)
+    keep_id = np.isfinite(id_score)
+    keep_ood = np.isfinite(ood_score)
+    if not np.any(keep_id) or not np.any(keep_ood):
+        return float("nan")
+    y_true = np.concatenate([
+        np.zeros(int(keep_id.sum()), dtype=int),
+        np.ones(int(keep_ood.sum()), dtype=int),
+    ])
+    scores = np.concatenate([id_score[keep_id], ood_score[keep_ood]])
+    fpr, tpr, _ = roc_curve(y_true, scores)
+    mask = tpr >= target_tpr
+    if not np.any(mask):
+        return float("nan")
+    return float(np.min(fpr[mask]))
+
+
+def condition_ood_metrics(
+    condition: str,
+    id_ood_score: np.ndarray,
+    heldout_ood_score: np.ndarray,
+    heldout_proba: np.ndarray,
+    heldout_metadata: dict[int, dict[str, Any]],
+    heldout_subjects: list[int],
+    classification_threshold: float,
+) -> dict[str, float | int]:
+    mask = np.array(
+        [bool(heldout_metadata[int(subject_id)][condition]) for subject_id in heldout_subjects],
+        dtype=bool,
+    )
+    condition_scores = np.asarray(heldout_ood_score, dtype=float)[mask]
+    condition_proba = np.asarray(heldout_proba, dtype=float)[mask]
+    n_subjects = int(mask.sum())
+
+    if n_subjects == 0:
+        return {
+            f"{condition}_heldout_subjects": 0,
+            f"{condition}_mean_ood_score": float("nan"),
+            f"{condition}_mean_pred_proba_chd": float("nan"),
+            f"{condition}_called_chd_recall": float("nan"),
+            f"{condition}_ood_auroc": float("nan"),
+            f"{condition}_ood_auprc": float("nan"),
+            f"{condition}_fpr_at_95_tpr": float("nan"),
+            f"{condition}_low_n": 0,
+        }
+
+    y_true = np.concatenate([
+        np.zeros_like(id_ood_score, dtype=int),
+        np.ones_like(condition_scores, dtype=int),
+    ])
+    scores = np.concatenate([id_ood_score, condition_scores])
+    return {
+        f"{condition}_heldout_subjects": n_subjects,
+        f"{condition}_mean_ood_score": safe_mean(condition_scores),
+        f"{condition}_mean_pred_proba_chd": safe_mean(condition_proba),
+        f"{condition}_called_chd_recall": float(np.mean(condition_proba >= classification_threshold)),
+        f"{condition}_ood_auroc": float(roc_auc_score(y_true, scores)),
+        f"{condition}_ood_auprc": float(average_precision_score(y_true, scores)),
+        f"{condition}_fpr_at_95_tpr": fpr_at_tpr(id_ood_score, condition_scores),
+        f"{condition}_low_n": int(n_subjects < 30),
+    }
+
+
+def check_fetal_clip_fold_counts(split_info: dict[str, Any]) -> None:
+    if int(split_info.get("n_folds", 1)) != 3:
+        return
+    expected_id_subjects = {0: 1298, 1: 1299, 2: 1300}
+    fold = int(split_info.get("fold", 0))
+    counts = split_info.get("counts", {})
+    expected_id = expected_id_subjects.get(fold)
+    if expected_id is None:
+        return
+    actual_id = int(counts.get("id_test_subjects", -1))
+    actual_heldout = int(counts.get("heldout_subjects", -1))
+    if actual_id != expected_id or actual_heldout != 223:
+        raise SystemExit(
+            "Unexpected FETAL-CLIP split counts: "
+            f"fold={fold}, id_test_subjects={actual_id} (expected {expected_id}), "
+            f"heldout_subjects={actual_heldout} (expected 223)."
+        )
+
+
+def check_fetal_clip_pooled_counts(
+    split_info: dict[str, Any],
+    *,
+    id_subjects_pooled: int,
+    heldout_subjects_pooled: int,
+) -> None:
+    if int(split_info.get("n_folds", 1)) != 3:
+        return
+    expected_id_subjects = {0: 1298, 1: 1299, 2: 1300}
+    fold = int(split_info.get("fold", 0))
+    expected_id = expected_id_subjects.get(fold)
+    if expected_id is None:
+        return
+    if id_subjects_pooled != expected_id or heldout_subjects_pooled != 223:
+        raise SystemExit(
+            "Unexpected FETAL-CLIP pooled subject counts: "
+            f"fold={fold}, id_test_subjects_pooled={id_subjects_pooled} "
+            f"(expected {expected_id}), heldout_subjects_pooled={heldout_subjects_pooled} "
+            "(expected 223)."
+        )
 
 
 def build_prediction_rows(
@@ -118,6 +243,15 @@ def main() -> None:
         ),
     )
     parser.add_argument("--pooling", choices=["mean", "max"], default="mean")
+    parser.add_argument("--backbone", choices=["dinov2", "fetal_clip"], default="dinov2")
+    parser.add_argument("--fetal-clip-checkpoint", default=None)
+    parser.add_argument("--fetal-clip-config", default=None)
+    parser.add_argument(
+        "--backbone-normalization",
+        choices=["auto", "imagenet", "clip"],
+        default="auto",
+        help="Frame normalization. auto = ImageNet for DINOv2, CLIP stats for FETAL-CLIP.",
+    )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--dropout", type=float, default=0.3)
     parser.add_argument("--energy-percentile", type=float, default=5.0)
@@ -148,6 +282,10 @@ def main() -> None:
         raise SystemExit("--n-folds must be >= 1.")
     if not 0 <= args.fold < args.n_folds:
         raise SystemExit(f"--fold must be in [0, {args.n_folds}); got {args.fold}.")
+    if args.backbone == "fetal_clip" and args.fetal_clip_checkpoint is None:
+        raise SystemExit("--fetal-clip-checkpoint is required for --backbone fetal_clip.")
+    if args.backbone == "fetal_clip":
+        args.output_prefix = f"{args.output_prefix}_{args.backbone}"
     if args.n_folds > 1:
         # Tag every output (checkpoints + results) with the fold so runs across
         # folds don't overwrite each other.
@@ -177,6 +315,11 @@ def main() -> None:
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    normalization = args.backbone_normalization
+    if normalization == "auto":
+        normalization = "clip" if args.backbone == "fetal_clip" else "imagenet"
+    transform = make_image_transform(normalization)
+
     print("\n[1/5] Loading disease-held-out data...")
     train_loader, val_loader, id_test_loader, heldout_loader, split_info = (
         get_heldout_disease_dataloaders(
@@ -192,10 +335,13 @@ def main() -> None:
             fold=args.fold,
             sononet_dir=sononet_dir,
             conf_threshold=sononet_conf,
+            transform=transform,
         )
     )
     print(f"  Held-out diseases: {', '.join(split_info['heldout_conditions'])}")
     print(f"  Counts: {split_info['counts']}")
+    if args.backbone == "fetal_clip":
+        check_fetal_clip_fold_counts(split_info)
 
     cache_dir = sononet_cfg.get("cache_dir") or config["features"]["cache_dir"]
     if args.no_sononet:
@@ -209,7 +355,32 @@ def main() -> None:
         "heldout": _sequential_loader(heldout_loader),
     }
 
-    print("\n[2/5] Loading/extracting DINOv2 features...")
+    checkpoint_id = "facebookresearch_dinov2_vitb14"
+    if args.backbone == "fetal_clip":
+        args.fetal_clip_config = resolve_fetal_clip_config(
+            args.fetal_clip_checkpoint,
+            args.fetal_clip_config,
+        )
+        config_id = (
+            checkpoint_id_from_path(args.fetal_clip_config)
+            if args.fetal_clip_config is not None
+            else "no_config"
+        )
+        checkpoint_id = f"{checkpoint_id_from_path(args.fetal_clip_checkpoint)}_{config_id}"
+    backbone_meta = {
+        "backbone": args.backbone,
+        "checkpoint_id": checkpoint_id,
+        "cache_namespace": (
+            feature_cache_namespace(args.backbone, checkpoint_id)
+            if args.backbone == "fetal_clip"
+            else None
+        ),
+    }
+
+    print(
+        f"\n[2/5] Loading/extracting {args.backbone} features "
+        f"(checkpoint_id={backbone_meta['checkpoint_id']})..."
+    )
     features: dict[str, dict[str, tuple[np.ndarray, int]]] = {}
     if args.skip_extract:
         for split_name, loader in split_loaders.items():
@@ -217,9 +388,17 @@ def main() -> None:
                 _video_paths_from_loader(loader),
                 cache_dir,
                 split_name=split_name,
+                cache_namespace=backbone_meta["cache_namespace"],
             )
     else:
-        dinov2 = load_dinov2(device)
+        backbone_model, backbone_meta = load_frozen_backbone(
+            args.backbone,
+            device,
+            fetal_clip_checkpoint=args.fetal_clip_checkpoint,
+            fetal_clip_config=args.fetal_clip_config,
+        )
+        if args.backbone == "dinov2":
+            backbone_meta["cache_namespace"] = None
         for split_name, loader in split_loaders.items():
             if split_name not in args.extract_splits:
                 print(f"  Skipping {split_name}; split not requested.")
@@ -227,12 +406,18 @@ def main() -> None:
                 continue
             extract_loader = loader
             if args.extract_only:
-                extract_loader = _missing_cache_loader(loader, cache_dir, split_name)
+                extract_loader = _missing_cache_loader(
+                    loader,
+                    cache_dir,
+                    split_name,
+                    backbone_meta["cache_namespace"],
+                )
             features[split_name] = extract_features(
                 extract_loader,
-                dinov2,
+                backbone_model,
                 device,
                 cache_dir,
+                cache_namespace=backbone_meta["cache_namespace"],
             )
 
     print(
@@ -275,6 +460,13 @@ def main() -> None:
         f"train: {len(train_subjects)}, val: {len(val_subjects)}, "
         f"id_test: {len(id_subjects)}, heldout: {len(heldout_subjects)}"
     )
+    if args.backbone == "fetal_clip":
+        check_fetal_clip_pooled_counts(
+            split_info,
+            id_subjects_pooled=len(id_subjects),
+            heldout_subjects_pooled=len(heldout_subjects),
+        )
+    embedding_dim = int(x_train.shape[1])
 
     print("\n[4/5] Training energy MLP...")
     Path("checkpoints").mkdir(exist_ok=True)
@@ -296,6 +488,7 @@ def main() -> None:
         config=energy_config,
         device=device,
         checkpoint_path=str(checkpoint_path),
+        input_dim=embedding_dim,
     )
 
     val_proba, val_neg_energy, _ = predict_energy(
@@ -340,15 +533,22 @@ def main() -> None:
         "id_ood_score_mean": raw_ood_metrics["id_uncertainty_mean"],
         "heldout_ood_score_mean": raw_ood_metrics["heldout_uncertainty_mean"],
     }
+    id_ood_score = -id_neg_energy
+    heldout_ood_score = -heldout_neg_energy
 
     normal_neg_energy = id_neg_energy[y_id == 0]
     seen_disease_neg_energy = id_neg_energy[y_id == 1]
     heldout_pred = (heldout_proba >= classification_threshold).astype(int)
     id_ood_flags = id_neg_energy < energy_threshold
     heldout_ood_flags = heldout_neg_energy < energy_threshold
+    id_ece = expected_calibration_error(y_id, id_proba)
+    ood_fpr_95 = fpr_at_tpr(id_ood_score, heldout_ood_score)
 
     summary = {
         "heldout_conditions": ",".join(split_info["heldout_conditions"]),
+        "backbone": args.backbone,
+        "embedding_dim": embedding_dim,
+        "checkpoint_id": backbone_meta["checkpoint_id"],
         "fold": int(split_info.get("fold", 0)),
         "n_folds": int(split_info.get("n_folds", 1)),
         "pooling": args.pooling,
@@ -363,6 +563,7 @@ def main() -> None:
         "id_macro_f1": id_metrics["macro_f1"],
         "id_sensitivity": id_metrics["sensitivity"],
         "id_specificity": id_metrics["specificity"],
+        "id_ece": float(id_ece),
         "combined_auroc": combined_metrics["auroc"],
         "combined_auprc": combined_metrics["auprc"],
         "combined_macro_f1": combined_metrics["macro_f1"],
@@ -371,10 +572,15 @@ def main() -> None:
         "seen_disease_neg_energy_mean": safe_mean(seen_disease_neg_energy),
         "heldout_neg_energy_mean": safe_mean(heldout_neg_energy),
         "val_neg_energy_mean": safe_mean(val_neg_energy),
+        "normal_energy_mean": safe_mean(-normal_neg_energy),
+        "seen_disease_energy_mean": safe_mean(-seen_disease_neg_energy),
+        "heldout_energy_mean": safe_mean(-heldout_neg_energy),
+        "val_energy_mean": safe_mean(-val_neg_energy),
         "id_ood_rate_at_tau": safe_rate(id_ood_flags),
         "heldout_ood_rate_at_tau": safe_rate(heldout_ood_flags),
         "normal_ood_rate_at_tau": safe_rate(id_ood_flags[y_id == 0]),
         "seen_disease_ood_rate_at_tau": safe_rate(id_ood_flags[y_id == 1]),
+        "ood_fpr_at_95_tpr": float(ood_fpr_95),
         **ood_metrics,
         **split_info["counts"],
         "train_subjects_pooled": len(train_subjects),
@@ -382,6 +588,18 @@ def main() -> None:
         "id_test_subjects_pooled": len(id_subjects),
         "heldout_subjects_pooled": len(heldout_subjects),
     }
+    for condition in split_info["heldout_conditions"]:
+        summary.update(
+            condition_ood_metrics(
+                condition,
+                id_ood_score,
+                heldout_ood_score,
+                heldout_proba,
+                heldout_metadata,
+                heldout_subjects,
+                classification_threshold,
+            )
+        )
 
     metadata = {}
     metadata.update(id_metadata)

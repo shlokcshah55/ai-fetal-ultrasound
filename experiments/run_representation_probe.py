@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
 import torch
@@ -55,6 +56,23 @@ def safe_classification_threshold(y_true: np.ndarray, y_proba: np.ndarray) -> fl
     if len(np.unique(y_true)) < 2:
         return 0.5
     return find_optimal_threshold(y_true, y_proba)
+
+
+def default_logreg_checkpoint(backbone: str, fold: int, n_folds: int, pooling: str) -> Path:
+    if backbone == "fetal_clip":
+        prefix = "heldout_disease_baseline_fetal_clip"
+    else:
+        prefix = "heldout_disease_logreg"
+    if n_folds > 1:
+        prefix = f"{prefix}_fold{fold}of{n_folds}"
+    return Path("checkpoints") / f"{prefix}_{pooling}_LogisticRegression.joblib"
+
+
+def positive_class_proba(probe: Any, x: np.ndarray) -> np.ndarray:
+    classes = list(getattr(probe, "classes_", []))
+    if 1 not in classes:
+        raise ValueError("Probe checkpoint does not expose class 1 in classes_.")
+    return probe.predict_proba(x)[:, classes.index(1)]
 
 
 def centroid_distance(
@@ -166,6 +184,20 @@ def main() -> None:
     parser.add_argument("--no-sononet", action="store_true")
     parser.add_argument("--device", default=None)
     parser.add_argument("--output-prefix", default="heldout_disease_representation_probe")
+    parser.add_argument(
+        "--probe-checkpoint",
+        default=None,
+        help=(
+            "Optional LogisticRegression checkpoint to reuse for probe probability "
+            "and margin scores. Defaults to the fold's baseline LR checkpoint for "
+            "DINOv2."
+        ),
+    )
+    parser.add_argument(
+        "--fit-probe",
+        action="store_true",
+        help="Fit a fresh LogisticRegression probe instead of loading the baseline checkpoint.",
+    )
     parser.add_argument("--n-folds", type=int, default=1)
     parser.add_argument("--fold", type=int, default=0)
     args = parser.parse_args()
@@ -181,7 +213,11 @@ def main() -> None:
         raise SystemExit(f"--fold must be in [0, {args.n_folds}); got {args.fold}.")
     if args.backbone == "fetal_clip" and args.fetal_clip_checkpoint is None:
         raise SystemExit("--fetal-clip-checkpoint is required for --backbone fetal_clip.")
-    args.output_prefix = f"{args.output_prefix}_{args.backbone}"
+    # Historical fetal-clip probe outputs include the backbone in the stem, but
+    # the requested DINOv2 cell mirrors the original DINOv2 naming without
+    # appending `_dinov2`.
+    if args.backbone == "fetal_clip":
+        args.output_prefix = f"{args.output_prefix}_{args.backbone}"
     if args.n_folds > 1:
         args.output_prefix = f"{args.output_prefix}_fold{args.fold}of{args.n_folds}"
 
@@ -315,12 +351,34 @@ def main() -> None:
     )
     embedding_dim = int(x_train.shape[1])
 
-    probe = get_logistic_regression(seed=seed)
-    probe.fit(x_train, y_train)
-    val_proba = probe.predict_proba(x_val)[:, 1]
+    probe_checkpoint_path: Path | None = None
+    if args.probe_checkpoint is not None:
+        probe_checkpoint_path = Path(args.probe_checkpoint)
+    elif args.backbone == "dinov2" and not args.fit_probe:
+        probe_checkpoint_path = default_logreg_checkpoint(
+            args.backbone,
+            args.fold,
+            args.n_folds,
+            args.pooling,
+        )
+
+    if probe_checkpoint_path is not None and not args.fit_probe:
+        if not probe_checkpoint_path.exists():
+            raise SystemExit(
+                f"Probe checkpoint not found: {probe_checkpoint_path}. "
+                "Pass --fit-probe to train a fresh probe instead."
+            )
+        probe = joblib.load(probe_checkpoint_path)
+        print(f"Loaded LogisticRegression probe from {probe_checkpoint_path}")
+    else:
+        probe = get_logistic_regression(seed=seed)
+        probe.fit(x_train, y_train)
+        print("Fitted fresh LogisticRegression probe")
+
+    val_proba = positive_class_proba(probe, x_val)
     threshold = safe_classification_threshold(y_val, val_proba)
-    id_proba = probe.predict_proba(x_id)[:, 1]
-    heldout_proba = probe.predict_proba(x_heldout)[:, 1]
+    id_proba = positive_class_proba(probe, x_id)
+    heldout_proba = positive_class_proba(probe, x_heldout)
     id_metrics = evaluate(y_id, id_proba, threshold=threshold)
     combined_y = np.concatenate([y_id, y_heldout])
     combined_proba = np.concatenate([id_proba, heldout_proba])
