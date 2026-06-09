@@ -284,7 +284,11 @@ def main() -> None:
     backbone_meta = {
         "backbone": args.backbone,
         "checkpoint_id": checkpoint_id,
-        "cache_namespace": feature_cache_namespace(args.backbone, checkpoint_id),
+        "cache_namespace": (
+            feature_cache_namespace(args.backbone, checkpoint_id)
+            if args.backbone == "fetal_clip"
+            else None
+        ),
     }
 
     features: dict[str, dict[str, tuple[np.ndarray, int]]] = {}
@@ -303,6 +307,8 @@ def main() -> None:
             fetal_clip_checkpoint=args.fetal_clip_checkpoint,
             fetal_clip_config=args.fetal_clip_config,
         )
+        if args.backbone == "dinov2":
+            backbone_meta["cache_namespace"] = None
         for split_name, loader in split_loaders.items():
             if split_name not in args.extract_splits:
                 features[split_name] = {}
