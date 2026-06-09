@@ -1,0 +1,19 @@
+{
+  "view_label": "4ch",
+  "primary_threshold": 0.5,
+  "thresholds": [
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7
+  ],
+  "bins": 50,
+  "videos_total": 255137,
+  "videos_with_sononet_pickle": 255137,
+  "videos_missing_sononet_pickle": 0,
+  "malformed_sononet_pickles": 0,
+  "videos_with_valid_4ch_probability": 156472,
+  "total_valid_4ch_probability_rows": 9241770,
+  "invalid_4ch_probability_rows": 0
+}
