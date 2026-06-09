@@ -179,6 +179,15 @@ def main() -> None:
         default=["train", "val", "id_test", "heldout"],
     )
     parser.add_argument("--features-cache-dir", default=None)
+    parser.add_argument(
+        "--feature-cache-namespace",
+        default=None,
+        help=(
+            "Override the feature-cache namespace. Use this to reuse cached "
+            "FETAL-CLIP embeddings when the checkpoint/config path-derived ID "
+            "differs from the original cache namespace."
+        ),
+    )
     parser.add_argument("--sononet-dir", default=None)
     parser.add_argument("--sononet-conf-threshold", type=float, default=None)
     parser.add_argument("--no-sononet", action="store_true")
@@ -290,6 +299,8 @@ def main() -> None:
             else None
         ),
     }
+    if args.feature_cache_namespace is not None:
+        backbone_meta["cache_namespace"] = args.feature_cache_namespace
 
     features: dict[str, dict[str, tuple[np.ndarray, int]]] = {}
     if args.skip_extract:
@@ -309,6 +320,8 @@ def main() -> None:
         )
         if args.backbone == "dinov2":
             backbone_meta["cache_namespace"] = None
+        if args.feature_cache_namespace is not None:
+            backbone_meta["cache_namespace"] = args.feature_cache_namespace
         for split_name, loader in split_loaders.items():
             if split_name not in args.extract_splits:
                 features[split_name] = {}
