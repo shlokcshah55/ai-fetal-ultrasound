@@ -1,0 +1,15 @@
+{
+  "csv_path": "data/labels.csv",
+  "subject_column": "subject_id",
+  "display_subjects": 4120,
+  "subjects": 4128,
+  "clips": 255137,
+  "mean": 61.806443798449614,
+  "median": 57.0,
+  "min": 1,
+  "q1": 38.0,
+  "q3": 77.0,
+  "max": 342,
+  "single_clip_subjects": 1,
+  "max_clip_subjects": 1
+}
