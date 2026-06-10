@@ -5,7 +5,7 @@ import csv
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from statistics import mean, pstdev
+from statistics import mean, stdev
 
 
 METHODS = ["LR", "MLP", "MC Dropout", "Energy", "VOS", "EDL"]
@@ -168,7 +168,7 @@ def read_auprc_from_spec(results_dir: Path, spec: MetricSpec) -> dict[str, objec
     else:
         values = [float(row["id_auprc"]) for _, row in source_rows]
         mean_value = mean(values)
-        std_value = pstdev(values) if len(values) > 1 else 0.0
+        std_value = stdev(values) if len(values) > 1 else 0.0
         n_folds = len(values)
 
     return {

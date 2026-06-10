@@ -1,0 +1,13 @@
+method,encoder,ood_auroc_mean,ood_auroc_std,n_folds,ood_metric,sources,note
+LR,DINOv2,0.520305,0.004974,3,ood_auroc,results/heldout_disease_logreg_cv_summary.csv,
+MLP,DINOv2,0.528065,0.019188,3,ood_auroc,results/heldout_disease_baseline_cv_summary.csv,
+MC Dropout,DINOv2,0.605263,0.221580,3,ood_auroc,results/heldout_disease_mc_dropout_mean_p0.3_T100_cv_summary.csv,
+Energy,DINOv2,0.630369,0.074167,3,ood_auroc,results/heldout_disease_energy_cv_summary.csv,
+VOS,DINOv2,0.604000,0.094685,3,ood_auroc,results/heldout_disease_vos_cv_summary.csv,
+EDL,DINOv2,0.519689,0.224872,3,ood_auroc,results/heldout_disease_edl_mean_softplus_ann25_kl0p10_cv_summary.csv,
+LR,FETAL-CLIP,0.561303,0.003935,3,linear_probe_margin_distance_ood_auroc,results/heldout_disease_representation_probe_fetal_clip_fold0of3_mean_summary.csv;results/heldout_disease_representation_probe_fetal_clip_fold1of3_mean_summary.csv;results/heldout_disease_representation_probe_fetal_clip_fold2of3_mean_summary.csv,Fetal-clip LR baseline summaries were overwritten by the MLP run; using saved LogisticRegression probe margin OOD AUROC.
+MLP,FETAL-CLIP,0.565320,0.067590,3,ood_auroc,results/heldout_disease_baseline_fetal_clip_cv_summary.csv,
+MC Dropout,FETAL-CLIP,0.566219,0.067782,3,ood_auroc,results/heldout_disease_mc_dropout_fetal_clip_fold0of3_mean_p0.3_T100_summary.csv;results/heldout_disease_mc_dropout_fetal_clip_fold1of3_mean_p0.3_T100_summary.csv;results/heldout_disease_mc_dropout_fetal_clip_fold2of3_mean_p0.3_T100_summary.csv,
+Energy,FETAL-CLIP,0.509439,0.098846,3,ood_auroc,results/heldout_disease_energy_fetal_clip_fold0of3_summary.csv;results/heldout_disease_energy_fetal_clip_fold1of3_summary.csv;results/heldout_disease_energy_fetal_clip_fold2of3_summary.csv,Uses the fetal-clip Energy checkpoint/config id saved in those summaries.
+VOS,FETAL-CLIP,0.548188,0.207386,3,ood_auroc,results/heldout_disease_vos_fetal_clip_fold0of3_summary.csv;results/heldout_disease_vos_fetal_clip_fold1of3_summary.csv;results/heldout_disease_vos_fetal_clip_fold2of3_summary.csv,
+EDL,FETAL-CLIP,0.450205,0.049418,3,ood_auroc,results/heldout_disease_edl_fetal_clip_fold0of3_mean_softplus_ann25_kl0p10_T100_summary.csv;results/heldout_disease_edl_fetal_clip_fold1of3_mean_softplus_ann25_kl0p10_T100_summary.csv;results/heldout_disease_edl_fetal_clip_fold2of3_mean_softplus_ann25_kl0p10_T100_summary.csv,
