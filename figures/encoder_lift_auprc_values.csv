@@ -5,8 +5,8 @@ MC Dropout,DINOv2,0.305159,0.010901,3,results/heldout_disease_mc_dropout_mean_p0
 Energy,DINOv2,0.296549,0.015773,3,results/heldout_disease_energy_cv_summary.csv,
 VOS,DINOv2,0.309694,0.020750,3,results/heldout_disease_vos_cv_summary.csv,
 EDL,DINOv2,0.310941,0.033151,3,results/heldout_disease_edl_mean_softplus_ann25_kl0p10_cv_summary.csv,
-LR,FETAL-CLIP,0.481112,0.024568,3,results/heldout_disease_baseline_fetal_clip_fold0of3_summary.csv;results/heldout_disease_baseline_fetal_clip_fold1of3_summary.csv;results/heldout_disease_baseline_fetal_clip_fold2of3_summary.csv,
-MLP,FETAL-CLIP,,,0,,NOT YET AVAILABLE: no fetal-clip MLP-head summary file found.
+MLP,FETAL-CLIP,0.481112,0.024568,3,results/heldout_disease_baseline_fetal_clip_fold0of3_summary.csv;results/heldout_disease_baseline_fetal_clip_fold1of3_summary.csv;results/heldout_disease_baseline_fetal_clip_fold2of3_summary.csv,
+LR,FETAL-CLIP,0.484897,0.021853,3,results/heldout_disease_representation_probe_fetal_clip_fold0of3_mean_summary.csv;results/heldout_disease_representation_probe_fetal_clip_fold1of3_mean_summary.csv;results/heldout_disease_representation_probe_fetal_clip_fold2of3_mean_summary.csv,Fresh LogisticRegression representation probe; baseline fetal-clip stem now contains the MLP run.
 MC Dropout,FETAL-CLIP,0.481629,0.026684,3,results/heldout_disease_mc_dropout_fetal_clip_fold0of3_mean_p0.3_T100_summary.csv;results/heldout_disease_mc_dropout_fetal_clip_fold1of3_mean_p0.3_T100_summary.csv;results/heldout_disease_mc_dropout_fetal_clip_fold2of3_mean_p0.3_T100_summary.csv,
 Energy,FETAL-CLIP,0.484797,0.015275,3,results/heldout_disease_energy_fetal_clip_fold0of3_summary.csv;results/heldout_disease_energy_fetal_clip_fold1of3_summary.csv;results/heldout_disease_energy_fetal_clip_fold2of3_summary.csv,Uses fetal-clip checkpoint/config id saved in the Energy summaries.
 VOS,FETAL-CLIP,0.499917,0.031909,3,results/heldout_disease_vos_fetal_clip_fold0of3_summary.csv;results/heldout_disease_vos_fetal_clip_fold1of3_summary.csv;results/heldout_disease_vos_fetal_clip_fold2of3_summary.csv,
