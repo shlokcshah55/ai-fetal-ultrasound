@@ -16,39 +16,59 @@ class MetricSpec:
     method: str
     encoder: str
     source_pattern: str | None
+    expected_classifier: str | None = None
     note: str = ""
 
 
 SPECS = [
-    MetricSpec("LR", "DINOv2", "heldout_disease_logreg_cv_summary.csv"),
-    MetricSpec("MLP", "DINOv2", "heldout_disease_baseline_cv_summary.csv"),
-    MetricSpec("MC Dropout", "DINOv2", "heldout_disease_mc_dropout_mean_p0.3_T100_cv_summary.csv"),
-    MetricSpec("Energy", "DINOv2", "heldout_disease_energy_cv_summary.csv"),
-    MetricSpec("VOS", "DINOv2", "heldout_disease_vos_cv_summary.csv"),
-    MetricSpec("EDL", "DINOv2", "heldout_disease_edl_mean_softplus_ann25_kl0p10_cv_summary.csv"),
-    MetricSpec("LR", "FETAL-CLIP", "heldout_disease_baseline_fetal_clip_fold*of3_summary.csv"),
+    MetricSpec("LR", "DINOv2", "heldout_disease_logreg_cv_summary.csv", "LogisticRegression"),
+    MetricSpec("MLP", "DINOv2", "heldout_disease_baseline_cv_summary.csv", "MLP"),
+    MetricSpec(
+        "MC Dropout",
+        "DINOv2",
+        "heldout_disease_mc_dropout_mean_p0.3_T100_cv_summary.csv",
+        "MCDropoutMLP",
+    ),
+    MetricSpec("Energy", "DINOv2", "heldout_disease_energy_cv_summary.csv", "EnergyMLP"),
+    MetricSpec("VOS", "DINOv2", "heldout_disease_vos_cv_summary.csv", "VOSMLP"),
+    MetricSpec(
+        "EDL",
+        "DINOv2",
+        "heldout_disease_edl_mean_softplus_ann25_kl0p10_cv_summary.csv",
+        "EvidentialMLP",
+    ),
     MetricSpec(
         "MLP",
         "FETAL-CLIP",
-        None,
-        "NOT YET AVAILABLE: no fetal-clip MLP-head summary file found.",
+        "heldout_disease_baseline_fetal_clip_fold*of3_summary.csv",
+        "MLP",
+    ),
+    MetricSpec(
+        "LR",
+        "FETAL-CLIP",
+        "heldout_disease_representation_probe_fetal_clip_fold*of3_mean_summary.csv",
+        "RepresentationProbe",
+        "Fresh LogisticRegression representation probe; baseline fetal-clip stem now contains the MLP run.",
     ),
     MetricSpec(
         "MC Dropout",
         "FETAL-CLIP",
         "heldout_disease_mc_dropout_fetal_clip_fold*of3_mean_p0.3_T100_summary.csv",
+        "MCDropoutMLP",
     ),
     MetricSpec(
         "Energy",
         "FETAL-CLIP",
         "heldout_disease_energy_fetal_clip_fold*of3_summary.csv",
+        "EnergyMLP",
         "Uses fetal-clip checkpoint/config id saved in the Energy summaries.",
     ),
-    MetricSpec("VOS", "FETAL-CLIP", "heldout_disease_vos_fetal_clip_fold*of3_summary.csv"),
+    MetricSpec("VOS", "FETAL-CLIP", "heldout_disease_vos_fetal_clip_fold*of3_summary.csv", "VOSMLP"),
     MetricSpec(
         "EDL",
         "FETAL-CLIP",
         "heldout_disease_edl_fetal_clip_fold*of3_mean_softplus_ann25_kl0p10_T100_summary.csv",
+        "EvidentialMLP",
     ),
 ]
 
@@ -118,13 +138,35 @@ def read_auprc_from_spec(results_dir: Path, spec: MetricSpec) -> dict[str, objec
             "note": f"NOT YET AVAILABLE: no files matched {spec.source_pattern}",
         }
 
-    if len(sources) == 1 and sources[0].name.endswith("_cv_summary.csv"):
-        row = read_single_row(sources[0])
+    source_rows = [(path, read_single_row(path)) for path in sources]
+    if spec.expected_classifier is not None:
+        source_rows = [
+            (path, row)
+            for path, row in source_rows
+            if row.get("classifier") == spec.expected_classifier
+        ]
+
+    if not source_rows:
+        return {
+            "method": spec.method,
+            "encoder": spec.encoder,
+            "mean": math.nan,
+            "std": math.nan,
+            "n_folds": 0,
+            "sources": "",
+            "note": (
+                f"NOT YET AVAILABLE: no files matching {spec.source_pattern} "
+                f"had classifier={spec.expected_classifier!r}."
+            ),
+        }
+
+    if len(source_rows) == 1 and source_rows[0][0].name.endswith("_cv_summary.csv"):
+        row = source_rows[0][1]
         mean_value = float(row["id_auprc_mean"])
         std_value = float(row["id_auprc_std"])
         n_folds = int(float(row.get("n_folds_found") or row.get("n_folds") or 0))
     else:
-        values = [float(read_single_row(path)["id_auprc"]) for path in sources]
+        values = [float(row["id_auprc"]) for _, row in source_rows]
         mean_value = mean(values)
         std_value = pstdev(values) if len(values) > 1 else 0.0
         n_folds = len(values)
@@ -135,7 +177,7 @@ def read_auprc_from_spec(results_dir: Path, spec: MetricSpec) -> dict[str, objec
         "mean": mean_value,
         "std": std_value,
         "n_folds": n_folds,
-        "sources": ";".join(str(path) for path in sources),
+        "sources": ";".join(str(path) for path, _ in source_rows),
         "note": spec.note,
     }
 
