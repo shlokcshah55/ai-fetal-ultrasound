@@ -1,0 +1,30 @@
+{
+  "diagnostics": {
+    "n_subjects_plotted": 2500,
+    "n_heldout_subjects": 223,
+    "heldout_nearest_id_seen_fraction": 0.2645739910313901,
+    "heldout_mean_distance_to_seen_centroid": 28.0805721282959,
+    "heldout_mean_distance_to_normal_centroid": 28.1419734954834,
+    "heldout_seen_centroid_distance_ratio": 0.9978181719779968
+  },
+  "meta": {
+    "backbone": "fetal_clip",
+    "checkpoint_id": "fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1",
+    "cache_namespace": "fetal_clip_fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1",
+    "cache_dir": "/vol/bitbucket/scs22/fyp/features_cache_4ch",
+    "fold": 0,
+    "n_folds": 3,
+    "splits": [
+      "train",
+      "val",
+      "id_test",
+      "heldout"
+    ],
+    "projection_method": "tsne",
+    "heldout_conditions": [
+      "tetralogy",
+      "avsd",
+      "a_stenosis"
+    ]
+  }
+}
