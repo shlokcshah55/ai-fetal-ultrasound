@@ -1,6 +1,6 @@
 # Results Summary
 
-Current date: 2026-06-10. All metric values are rounded to 3 decimal places. Values reported as `mean +/- std` use the saved folds named in the relevant table unless explicitly marked as single-fold only. No accuracy values are reported.
+Current date: 2026-06-11. All metric values are rounded to 3 decimal places. Values reported as `mean +/- std` use the saved folds named in the relevant table unless explicitly marked as single-fold only. No accuracy values are reported.
 
 ## 1. RUN INVENTORY
 
@@ -23,12 +23,13 @@ Run date/time below is the saved result/checkpoint file modification time, becau
 | EDL softplus ann25 kl0.10, T=10 | 3/3 | 2026-06-02 09:38:55 +0100 | `results/heldout_disease_edl_mean_softplus_ann25_kl0p10_T10_cv_summary.csv`; same EDL fold checkpoints as above |
 | EDL softplus ann25 kl0.10, T=100 | 3/3 | 2026-06-02 09:38:55 +0100 | `results/heldout_disease_edl_mean_softplus_ann25_kl0p10_T100_cv_summary.csv`; same EDL fold checkpoints as above |
 | EDL softplus ann25 kl0.10, T=1000 | 3/3 | 2026-06-02 09:38:55 +0100 | `results/heldout_disease_edl_mean_softplus_ann25_kl0p10_T1000_cv_summary.csv`; same EDL fold checkpoints as above |
-| Fetal-clip LR baseline | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_mean_LogisticRegression.joblib`; checkpoint/config id `fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1` |
-| Fetal-clip representation probe | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_summary.csv`; same fetal-clip checkpoint/config id |
-| Fetal-clip MC Dropout, p=0.3, T=100 | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_mc_dropout_fetal_clip_fold{0,1,2}of3_mean_p0.3_T100_summary.csv`; checkpoints `checkpoints/heldout_disease_mc_dropout_fetal_clip_fold{0,1,2}of3_mean_p0.3_mlp.pt`; same fetal-clip checkpoint/config id |
-| Fetal-clip Energy | 3/3 | 2026-06-10 11:18:31 +0100 | `results/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_mean_t1_energy_mlp.pt`; checkpoint/config id `fetalclip_weights_550f38e5_fetalclip_config_580f6925` |
-| Fetal-clip VOS | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_mean_vos_mlp.pt`; Gaussian stats `checkpoints/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_mean_vos_gaussian_stats.npz`; same fetal-clip checkpoint/config id |
-| Fetal-clip EDL softplus ann25 kl0.10, T=100 | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_T100_summary.csv`; checkpoints `checkpoints/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_edl_mlp.pt`; same fetal-clip checkpoint/config id |
+| Fetal-clip LR/probe baseline | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_representation_probe_fetal_clip_mean_cv_summary.csv` and fold files `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_summary.csv`; checkpoints `checkpoints/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_mean_LogisticRegression.joblib`; checkpoint/config id `fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1` |
+| Fetal-clip MLP head | 3/3 | 2026-06-10 22:22:59 +0100 | `results/heldout_disease_baseline_fetal_clip_cv_summary.csv` and fold files `results/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_mean_MLP.pt`; same fetal-clip checkpoint/config id |
+| Fetal-clip representation probe | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_representation_probe_fetal_clip_mean_cv_summary.csv` and fold files `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_summary.csv`; same fetal-clip checkpoint/config id |
+| Fetal-clip MC Dropout, p=0.3, T=100 | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_mc_dropout_fetal_clip_mean_p0.3_T100_cv_summary.csv` and fold files `results/heldout_disease_mc_dropout_fetal_clip_fold{0,1,2}of3_mean_p0.3_T100_summary.csv`; checkpoints `checkpoints/heldout_disease_mc_dropout_fetal_clip_fold{0,1,2}of3_mean_p0.3_mlp.pt`; same fetal-clip checkpoint/config id |
+| Fetal-clip Energy | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_energy_fetal_clip_cv_summary.csv` and fold files `results/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_mean_t1_energy_mlp.pt`; checkpoint/config id `fetalclip_weights_550f38e5_fetalclip_config_580f6925` |
+| Fetal-clip VOS | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_vos_fetal_clip_cv_summary.csv` and fold files `results/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_mean_vos_mlp.pt`; Gaussian stats `checkpoints/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_mean_vos_gaussian_stats.npz`; same fetal-clip checkpoint/config id |
+| Fetal-clip EDL softplus ann25 kl0.10, T=100 | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_edl_fetal_clip_mean_softplus_ann25_kl0p10_T100_cv_summary.csv` and fold files `results/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_T100_summary.csv`; checkpoints `checkpoints/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_edl_mlp.pt`; same fetal-clip checkpoint/config id |
 
 ### Single-split saved result sets
 
@@ -200,18 +201,19 @@ Source note: values were read from `results/heldout_disease_mc_dropout_mean_p0.3
 
 ## 8. FETAL-CLIP RESULTS
 
-These fetal-clip results now have 3/3 folds for LR baseline, representation probe, MC Dropout, Energy, VOS, and EDL. Direct fetal-clip vs DINOv2 comparison is now available for LR/MC/Energy/VOS/EDL. Note: fetal-clip Energy uses checkpoint/config id `fetalclip_weights_550f38e5_fetalclip_config_580f6925`, while the earlier fetal-clip LR/MC/VOS/EDL runs use `fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1`.
+These fetal-clip results now have 3/3 folds for LR/probe, MLP head, representation probe, MC Dropout, Energy, VOS, and EDL. Direct fetal-clip vs DINOv2 comparison is now available for LR/MLP/MC/Energy/VOS/EDL. Note: `results/heldout_disease_baseline_fetal_clip_fold*` now contains the deterministic MLP run; LR/probe values in this report come from the representation-probe LogisticRegression outputs. Fetal-clip Energy uses checkpoint/config id `fetalclip_weights_550f38e5_fetalclip_config_580f6925`, while the earlier fetal-clip LR/MC/VOS/EDL/probe runs use `fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1`.
 
 ### Fetal-clip run inventory
 
 | Method/result set | Folds available | Run date/time | Checkpoint/config provenance |
 |---|---:|---|---|
-| Fetal-clip LR baseline | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_mean_LogisticRegression.joblib`; checkpoint/config id `fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1` |
-| Fetal-clip representation probe | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_summary.csv`; same fetal-clip checkpoint/config id |
-| Fetal-clip MC Dropout, p=0.3, T=100 | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_mc_dropout_fetal_clip_fold{0,1,2}of3_mean_p0.3_T100_summary.csv`; checkpoints `checkpoints/heldout_disease_mc_dropout_fetal_clip_fold{0,1,2}of3_mean_p0.3_mlp.pt`; same fetal-clip checkpoint/config id |
-| Fetal-clip Energy | 3/3 | 2026-06-10 11:18:31 +0100 | `results/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_mean_t1_energy_mlp.pt`; checkpoint/config id `fetalclip_weights_550f38e5_fetalclip_config_580f6925` |
-| Fetal-clip VOS | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_mean_vos_mlp.pt`; Gaussian stats `checkpoints/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_mean_vos_gaussian_stats.npz`; same fetal-clip checkpoint/config id |
-| Fetal-clip EDL softplus ann25 kl0.10, T=100 | 3/3 | latest 2026-06-05 16:18:26 +0100 | `results/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_T100_summary.csv`; checkpoints `checkpoints/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_edl_mlp.pt`; same fetal-clip checkpoint/config id |
+| Fetal-clip LR/probe baseline | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_representation_probe_fetal_clip_mean_cv_summary.csv` and fold files `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_summary.csv`; checkpoints `checkpoints/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_mean_LogisticRegression.joblib`; checkpoint/config id `fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1` |
+| Fetal-clip MLP head | 3/3 | 2026-06-10 22:22:59 +0100 | `results/heldout_disease_baseline_fetal_clip_cv_summary.csv` and fold files `results/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_mean_MLP.pt`; same fetal-clip checkpoint/config id |
+| Fetal-clip representation probe | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_representation_probe_fetal_clip_mean_cv_summary.csv` and fold files `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_summary.csv`; same fetal-clip checkpoint/config id |
+| Fetal-clip MC Dropout, p=0.3, T=100 | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_mc_dropout_fetal_clip_mean_p0.3_T100_cv_summary.csv` and fold files `results/heldout_disease_mc_dropout_fetal_clip_fold{0,1,2}of3_mean_p0.3_T100_summary.csv`; checkpoints `checkpoints/heldout_disease_mc_dropout_fetal_clip_fold{0,1,2}of3_mean_p0.3_mlp.pt`; same fetal-clip checkpoint/config id |
+| Fetal-clip Energy | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_energy_fetal_clip_cv_summary.csv` and fold files `results/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_mean_t1_energy_mlp.pt`; checkpoint/config id `fetalclip_weights_550f38e5_fetalclip_config_580f6925` |
+| Fetal-clip VOS | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_vos_fetal_clip_cv_summary.csv` and fold files `results/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_summary.csv`; checkpoints `checkpoints/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_mean_vos_mlp.pt`; Gaussian stats `checkpoints/heldout_disease_vos_fetal_clip_fold{0,1,2}of3_mean_vos_gaussian_stats.npz`; same fetal-clip checkpoint/config id |
+| Fetal-clip EDL softplus ann25 kl0.10, T=100 | 3/3 | latest 2026-06-10 22:22:59 +0100 | `results/heldout_disease_edl_fetal_clip_mean_softplus_ann25_kl0p10_T100_cv_summary.csv` and fold files `results/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_T100_summary.csv`; checkpoints `checkpoints/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_edl_mlp.pt`; same fetal-clip checkpoint/config id |
 
 Source note: run date/time is file modification time. All fetal-clip runs use held-out conditions `tetralogy,avsd,a_stenosis`, mean pooling, and `n_folds=3`, from their corresponding `*_split_info.json` files. ID-test subjects are 1298, 1299, and 1300 across folds 0-2; held-out subjects are 223 in each fold.
 
@@ -219,13 +221,14 @@ Source note: run date/time is file modification time. All fetal-clip runs use he
 
 | Method | Folds used | ID AUPRC | ID AUROC | F1 | Sensitivity | Specificity | OOD AUROC | OOD AUPRC | FPR@95TPR | ID ECE | Held-out called CHD |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Fetal-clip LR baseline | 3/3 | 0.485 +/- 0.027 | 0.855 +/- 0.008 | 0.624 +/- 0.021 | 0.815 +/- 0.006 | 0.740 +/- 0.032 | 0.561 +/- 0.004 | 0.168 +/- 0.002 | 0.950 +/- 0.006 | 0.181 +/- 0.006 | 0.892 +/- 0.004 |
+| Fetal-clip LR/probe | 3/3 | 0.485 +/- 0.027 | 0.855 +/- 0.008 | 0.624 +/- 0.021 | 0.815 +/- 0.006 | 0.740 +/- 0.032 | 0.561 +/- 0.004 | 0.168 +/- 0.002 | 0.950 +/- 0.006 | 0.181 +/- 0.006 | 0.892 +/- 0.004 |
+| Fetal-clip MLP | 3/3 | 0.481 +/- 0.030 | 0.852 +/- 0.012 | 0.643 +/- 0.073 | 0.776 +/- 0.083 | 0.769 +/- 0.119 | 0.565 +/- 0.068 | 0.175 +/- 0.022 | 0.854 +/- 0.082 | 0.183 +/- 0.047 | 0.803 +/- 0.103 |
 | Fetal-clip MC Dropout T100 | 3/3 | 0.482 +/- 0.033 | 0.851 +/- 0.012 | 0.638 +/- 0.079 | 0.761 +/- 0.097 | 0.767 +/- 0.133 | 0.566 +/- 0.068 | 0.173 +/- 0.023 | 0.876 +/- 0.071 | 0.184 +/- 0.049 | 0.797 +/- 0.115 |
 | Fetal-clip Energy | 3/3 | 0.485 +/- 0.019 | 0.854 +/- 0.008 | 0.638 +/- 0.050 | 0.800 +/- 0.050 | 0.760 +/- 0.071 | 0.509 +/- 0.099 | 0.147 +/- 0.029 | 0.849 +/- 0.095 | 0.224 +/- 0.062 | 0.837 +/- 0.053 |
 | Fetal-clip VOS | 3/3 | 0.500 +/- 0.039 | 0.851 +/- 0.006 | 0.645 +/- 0.029 | 0.753 +/- 0.077 | 0.785 +/- 0.050 | 0.548 +/- 0.207 | 0.177 +/- 0.065 | 0.792 +/- 0.176 | 0.187 +/- 0.145 | 0.786 +/- 0.056 |
 | Fetal-clip EDL T100 | 3/3 | 0.456 +/- 0.035 | 0.848 +/- 0.012 | 0.614 +/- 0.033 | 0.800 +/- 0.099 | 0.730 +/- 0.071 | 0.450 +/- 0.049 | 0.136 +/- 0.011 | 0.975 +/- 0.020 | 0.213 +/- 0.015 | 0.842 +/- 0.093 |
 
-Source note: classification and OOD AUROC/AUPRC values were read from the fetal-clip fold summary CSVs listed in the inventory above. FPR@95TPR and non-EDL ID ECE were read from the Energy summaries where saved, and otherwise derived from the corresponding fetal-clip prediction CSVs using LR/MC Dropout `uncertainty_entropy`, Energy/VOS `ood_score`, EDL `uncertainty_dirichlet`, and `pred_proba_chd`.
+Source note: LR/probe classification values were read from `results/heldout_disease_representation_probe_fetal_clip_mean_cv_summary.csv`; LR/probe OOD values use `linear_probe_margin_distance` from `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_predictions.csv`. MLP classification and OOD AUROC/AUPRC were read from `results/heldout_disease_baseline_fetal_clip_cv_summary.csv`; MLP FPR@95TPR and ID ECE were derived from `results/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_predictions.csv` using `uncertainty_entropy` and `pred_proba_chd`. Other classification and OOD AUROC/AUPRC values were read from the fetal-clip fold summary CSVs listed in the inventory above. FPR@95TPR and non-EDL ID ECE were read from the Energy summaries where saved, and otherwise derived from the corresponding fetal-clip prediction CSVs using MC Dropout `uncertainty_entropy`, Energy/VOS `ood_score`, EDL `uncertainty_dirichlet`, and `pred_proba_chd`.
 
 ### Fetal-clip representation probe OOD distances
 
@@ -255,21 +258,25 @@ Source note: values were read from `results/heldout_disease_representation_probe
 
 | Matched method | DINOv2 ID AUPRC | Fetal-clip ID AUPRC | Delta ID AUPRC | DINOv2 ID AUROC | Fetal-clip ID AUROC | DINOv2 OOD AUROC | Fetal-clip OOD AUROC | DINOv2 OOD AUPRC | Fetal-clip OOD AUPRC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| LR baseline | 0.237 +/- 0.017 | 0.485 +/- 0.027 | +0.248 | 0.681 +/- 0.003 | 0.855 +/- 0.008 | 0.520 +/- 0.005 | 0.561 +/- 0.004 | 0.191 +/- 0.003 | 0.168 +/- 0.002 |
+| LR/probe baseline | 0.237 +/- 0.017 | 0.485 +/- 0.027 | +0.248 | 0.681 +/- 0.003 | 0.855 +/- 0.008 | 0.520 +/- 0.005 | 0.561 +/- 0.004 | 0.191 +/- 0.003 | 0.168 +/- 0.002 |
+| MLP head | 0.247 +/- 0.017 | 0.481 +/- 0.030 | +0.234 | 0.685 +/- 0.007 | 0.852 +/- 0.012 | 0.528 +/- 0.019 | 0.565 +/- 0.068 | 0.189 +/- 0.007 | 0.175 +/- 0.022 |
 | MC Dropout T100 | 0.305 +/- 0.011 | 0.482 +/- 0.033 | +0.177 | 0.776 +/- 0.017 | 0.851 +/- 0.012 | 0.605 +/- 0.222 | 0.566 +/- 0.068 | 0.231 +/- 0.125 | 0.173 +/- 0.023 |
 | Energy | 0.297 +/- 0.016 | 0.485 +/- 0.019 | +0.188 | 0.769 +/- 0.017 | 0.854 +/- 0.008 | 0.630 +/- 0.074 | 0.509 +/- 0.099 | 0.205 +/- 0.046 | 0.147 +/- 0.029 |
 | VOS | 0.310 +/- 0.021 | 0.500 +/- 0.039 | +0.190 | 0.771 +/- 0.037 | 0.851 +/- 0.006 | 0.604 +/- 0.095 | 0.548 +/- 0.207 | 0.184 +/- 0.041 | 0.177 +/- 0.065 |
 | EDL T100 | 0.312 +/- 0.034 | 0.456 +/- 0.035 | +0.144 | 0.772 +/- 0.033 | 0.848 +/- 0.012 | 0.526 +/- 0.228 | 0.450 +/- 0.049 | 0.172 +/- 0.068 | 0.136 +/- 0.011 |
 
-Source note: DINOv2 values were read from `results/heldout_disease_logreg_fold{0,1,2}of3_summary.csv`, `results/heldout_disease_mc_dropout_fold{0,1,2}of3_mean_p0.3_T100_summary.csv`, `results/heldout_disease_energy_fold{0,1,2}of3_summary.csv`, `results/heldout_disease_vos_fold{0,1,2}of3_summary.csv`, and `results/heldout_disease_edl_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_T100_summary.csv`. Fetal-clip values were read from the matching fetal-clip fold summary files listed above.
+Source note: DINOv2 values were read from `results/heldout_disease_logreg_fold{0,1,2}of3_summary.csv`, `results/heldout_disease_baseline_cv_summary.csv`, `results/heldout_disease_mc_dropout_fold{0,1,2}of3_mean_p0.3_T100_summary.csv`, `results/heldout_disease_energy_fold{0,1,2}of3_summary.csv`, `results/heldout_disease_vos_fold{0,1,2}of3_summary.csv`, and `results/heldout_disease_edl_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_T100_summary.csv`. Fetal-clip MLP values were read from `results/heldout_disease_baseline_fetal_clip_cv_summary.csv`; fetal-clip LR/probe values were read from `results/heldout_disease_representation_probe_fetal_clip_mean_cv_summary.csv` and derived from the matching representation-probe prediction files for margin-distance OOD metrics. Other fetal-clip values were read from the matching fetal-clip fold summary files listed above.
 
 ### Fetal-clip per-condition held-out breakdown
 
 | Method | Condition | Subjects | Mean p(CHD) | Recall as CHD | OOD AUROC | OOD AUPRC | FPR@95TPR | Flag |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| Fetal-clip LR baseline | ToF | 115 | 0.692 +/- 0.014 | 0.875 +/- 0.013 | 0.573 +/- 0.020 | 0.098 +/- 0.007 | 0.911 +/- 0.039 |  |
-| Fetal-clip LR baseline | AVSD | 86 | 0.735 +/- 0.023 | 0.911 +/- 0.013 | 0.538 +/- 0.025 | 0.069 +/- 0.005 | 0.978 +/- 0.015 |  |
-| Fetal-clip LR baseline | Aortic Stenosis | 26 | 0.715 +/- 0.011 | 0.910 +/- 0.059 | 0.571 +/- 0.025 | 0.035 +/- 0.008 | 0.976 +/- 0.009 | LOW-N |
+| Fetal-clip LR/probe | ToF | 115 | 0.692 +/- 0.014 | 0.875 +/- 0.013 | 0.573 +/- 0.020 | 0.098 +/- 0.007 | 0.911 +/- 0.039 |  |
+| Fetal-clip LR/probe | AVSD | 86 | 0.735 +/- 0.023 | 0.911 +/- 0.013 | 0.538 +/- 0.025 | 0.069 +/- 0.005 | 0.978 +/- 0.015 |  |
+| Fetal-clip LR/probe | Aortic Stenosis | 26 | 0.715 +/- 0.011 | 0.910 +/- 0.059 | 0.571 +/- 0.025 | 0.035 +/- 0.008 | 0.976 +/- 0.009 | LOW-N |
+| Fetal-clip MLP | ToF | 115 | 0.709 +/- 0.028 | 0.806 +/- 0.098 | 0.576 +/- 0.079 | 0.105 +/- 0.025 | 0.836 +/- 0.075 |  |
+| Fetal-clip MLP | AVSD | 86 | 0.739 +/- 0.031 | 0.798 +/- 0.108 | 0.539 +/- 0.071 | 0.075 +/- 0.010 | 0.888 +/- 0.077 |  |
+| Fetal-clip MLP | Aortic Stenosis | 26 | 0.726 +/- 0.018 | 0.795 +/- 0.160 | 0.586 +/- 0.040 | 0.031 +/- 0.006 | 0.878 +/- 0.096 | LOW-N |
 | Fetal-clip MC Dropout T100 | ToF | 115 | 0.690 +/- 0.030 | 0.791 +/- 0.118 | 0.579 +/- 0.078 | 0.105 +/- 0.024 | 0.844 +/- 0.068 |  |
 | Fetal-clip MC Dropout T100 | AVSD | 86 | 0.722 +/- 0.033 | 0.798 +/- 0.106 | 0.539 +/- 0.071 | 0.072 +/- 0.007 | 0.908 +/- 0.053 |  |
 | Fetal-clip MC Dropout T100 | Aortic Stenosis | 26 | 0.713 +/- 0.014 | 0.808 +/- 0.176 | 0.586 +/- 0.041 | 0.029 +/- 0.002 | 0.913 +/- 0.067 | LOW-N |
@@ -283,7 +290,7 @@ Source note: DINOv2 values were read from `results/heldout_disease_logreg_fold{0
 | Fetal-clip EDL T100 | AVSD | 86 | 0.740 +/- 0.015 | 0.860 +/- 0.081 | 0.435 +/- 0.017 | 0.056 +/- 0.002 | 0.985 +/- 0.020 |  |
 | Fetal-clip EDL T100 | Aortic Stenosis | 26 | 0.739 +/- 0.035 | 0.859 +/- 0.080 | 0.480 +/- 0.046 | 0.022 +/- 0.004 | 0.993 +/- 0.006 | LOW-N |
 
-Source note: this table was derived from the fetal-clip fold prediction CSVs listed in the inventory. OOD negatives are each fold's `id_test` subjects; OOD positives are each held-out condition separately. Aortic Stenosis has only 26 held-out subjects per fold, so those rows are high-variance.
+Source note: this table was derived from the fetal-clip fold prediction CSVs listed in the inventory. LR/probe rows use `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_predictions.csv` and `linear_probe_margin_distance`; MLP rows use `results/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_predictions.csv` and `uncertainty_entropy`. OOD negatives are each fold's `id_test` subjects; OOD positives are each held-out condition separately. Aortic Stenosis has only 26 held-out subjects per fold, so those rows are high-variance.
 
 ### Fetal-clip uncertainty decomposition
 
@@ -303,19 +310,20 @@ Source note: MC Dropout decomposition values were read from `results/heldout_dis
 
 | Method | ID ECE uncalibrated | ID ECE calibrated | Combined ECE uncalibrated | Combined ECE calibrated | Temperature scaling status |
 |---|---:|---:|---:|---:|---|
-| Fetal-clip LR baseline | 0.181 +/- 0.006 | NOT YET AVAILABLE | NOT YET AVAILABLE | NOT YET AVAILABLE | No calibrated probabilities saved |
+| Fetal-clip LR/probe | 0.181 +/- 0.006 | NOT YET AVAILABLE | NOT YET AVAILABLE | NOT YET AVAILABLE | No calibrated probabilities saved |
+| Fetal-clip MLP | 0.183 +/- 0.047 | NOT YET AVAILABLE | NOT YET AVAILABLE | NOT YET AVAILABLE | No calibrated probabilities saved; validation predictions/logits needed to fit temperature are not saved |
 | Fetal-clip MC Dropout T100 | 0.184 +/- 0.049 | NOT YET AVAILABLE | NOT YET AVAILABLE | NOT YET AVAILABLE | No calibrated probabilities saved |
 | Fetal-clip Energy | 0.224 +/- 0.062 | NOT YET AVAILABLE | NOT YET AVAILABLE | NOT YET AVAILABLE | Energy temperature is `1.0`; no classification temperature scaling saved |
 | Fetal-clip VOS | 0.187 +/- 0.145 | NOT YET AVAILABLE | NOT YET AVAILABLE | NOT YET AVAILABLE | No calibrated probabilities saved |
 | Fetal-clip EDL T100 | 0.213 +/- 0.015 | 0.224 +/- 0.025 | 0.141 +/- 0.017 | 0.148 +/- 0.025 | Temperature scaling saved; mean temperature 1.126 +/- 0.123 |
 
-Source note: EDL calibration values were read from `results/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_T100_summary.csv`. Fetal-clip Energy ID ECE was read from `results/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_summary.csv`. Other non-EDL ECE values were derived from fetal-clip prediction CSVs using ID-test `label` and `pred_proba_chd`.
+Source note: EDL calibration values were read from `results/heldout_disease_edl_fetal_clip_fold{0,1,2}of3_mean_softplus_ann25_kl0p10_T100_summary.csv`. Fetal-clip Energy ID ECE was read from `results/heldout_disease_energy_fetal_clip_fold{0,1,2}of3_summary.csv`. LR/probe ECE was derived from `results/heldout_disease_representation_probe_fetal_clip_fold{0,1,2}of3_mean_predictions.csv`; MLP ECE was derived from `results/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_predictions.csv`. Other non-EDL ECE values were derived from fetal-clip prediction CSVs using ID-test `label` and `pred_proba_chd`.
 
 ### Fetal-clip interpretation
 
-The fetal-clip backbone is currently the main classification improvement. Across all 3 folds, every matched fetal-clip classifier improves ID AUPRC over its DINOv2 counterpart. The largest simple representation signal is LR baseline: DINOv2 LR ID AUPRC is 0.237 +/- 0.017, while fetal-clip LR ID AUPRC is 0.485 +/- 0.027. Fetal-clip Energy also improves ID AUPRC over DINOv2 Energy: 0.485 +/- 0.019 vs 0.297 +/- 0.016.
+The fetal-clip backbone is currently the main classification improvement. Across all 3 folds, every matched fetal-clip classifier improves ID AUPRC over its DINOv2 counterpart. The largest simple representation signal is LR/probe: DINOv2 LR ID AUPRC is 0.237 +/- 0.017, while fetal-clip LR/probe ID AUPRC is 0.485 +/- 0.027. The deterministic MLP comparison now points the same way: DINOv2 MLP is 0.247 +/- 0.017, while fetal-clip MLP is 0.481 +/- 0.030. Fetal-clip Energy also improves ID AUPRC over DINOv2 Energy: 0.485 +/- 0.019 vs 0.297 +/- 0.016.
 
-The OOD story is weaker. Fetal-clip LR, MC Dropout, Energy, and VOS OOD AUROC values are 0.561, 0.566, 0.509, and 0.548 respectively, and all OOD AUPRC values remain <= 0.177 for the UQ scores. Fetal-clip Energy underperforms DINOv2 Energy on OOD detection: OOD AUROC drops from 0.630 +/- 0.074 to 0.509 +/- 0.099. EDL's Dirichlet uncertainty is below random for aggregate OOD detection with AUROC 0.450 +/- 0.049. The representation-probe CHD probability has high held-out-vs-ID AUROC at 0.863 +/- 0.006 for fetal-clip and 0.806 +/- 0.007 for DINOv2, but that is because held-out diseases are confidently CHD-like, not because they are being identified as novel by an uncertainty/distance score.
+The OOD story is weaker. Fetal-clip LR/probe, MLP, MC Dropout, Energy, and VOS OOD AUROC values are 0.561, 0.565, 0.566, 0.509, and 0.548 respectively, and all OOD AUPRC values remain <= 0.177 for the UQ scores. Fetal-clip Energy underperforms DINOv2 Energy on OOD detection: OOD AUROC drops from 0.630 +/- 0.074 to 0.509 +/- 0.099. EDL's Dirichlet uncertainty is below random for aggregate OOD detection with AUROC 0.450 +/- 0.049. The representation-probe CHD probability has high held-out-vs-ID AUROC at 0.863 +/- 0.006 for fetal-clip and 0.806 +/- 0.007 for DINOv2, but that is because held-out diseases are confidently CHD-like, not because they are being identified as novel by an uncertainty/distance score.
 
 The current working interpretation is: fetal-clip improves the CHD representation substantially, including on held-out disease classification, but held-out diseases often look like disease rather than like novel/OOD examples. This is good for broad CHD detection and still weak for novelty detection.
 
@@ -333,7 +341,9 @@ The current working interpretation is: fetal-clip improves the CHD representatio
 | Energy stage drops ID AUPRC relative to MC Dropout | ID AUPRC changes from 0.305 +/- 0.011 to 0.297 +/- 0.016, a change of -0.008. |
 | VOS/EDL improve ID AUPRC only marginally after Energy/VOS | VOS improves over Energy by +0.013 AUPRC; EDL improves over VOS by +0.001 AUPRC. |
 | Several group-wise rows are very small-n | Subject-level `tga`, `hlhs`, `p_stenosis`, and `p_atresia` have n=19, 13, 9, and 7 respectively. |
-| Fetal-clip improves ID classification but not OOD detection | Fetal-clip LR over 3 folds has ID AUPRC 0.485 +/- 0.027, but OOD AUPRC is only 0.168 +/- 0.002 and FPR@95TPR is 0.950 +/- 0.006. |
+| Fetal-clip improves ID classification but not OOD detection | Fetal-clip LR/probe over 3 folds has ID AUPRC 0.485 +/- 0.027, but margin-distance OOD AUPRC is only 0.168 +/- 0.002 and FPR@95TPR is 0.950 +/- 0.006. |
+| Fetal-clip MLP improves ID classification but not OOD detection | ID AUPRC improves from DINOv2 MLP 0.247 +/- 0.017 to fetal-clip MLP 0.481 +/- 0.030, but OOD AUROC remains near chance at 0.565 +/- 0.068. |
+| Fetal-clip baseline stem now contains MLP results | `results/heldout_disease_baseline_fetal_clip_fold{0,1,2}of3_summary.csv` now has `classifier=MLP`; LR/probe values are sourced from representation-probe LogisticRegression outputs. |
 | Fetal-clip Energy improves ID classification but hurts OOD detection | ID AUPRC improves over DINOv2 Energy from 0.297 +/- 0.016 to 0.485 +/- 0.019, but OOD AUROC drops from 0.630 +/- 0.074 to 0.509 +/- 0.099 and OOD AUPRC drops from 0.205 +/- 0.046 to 0.147 +/- 0.029. |
 | Fetal-clip Energy uses a different extractor/config id | Fetal-clip Energy uses `fetalclip_weights_550f38e5_fetalclip_config_580f6925`, while LR/MC/VOS/EDL/probe use `fetalclip_weights_c3ea7e11_fetalclip_config_e5fc56d1`; this may affect direct method comparisons within fetal-clip. |
 | Fetal-clip VOS has huge OOD fold variance | Fetal-clip VOS OOD AUROC is 0.548 +/- 0.207 and FPR@95TPR is 0.792 +/- 0.176. |
@@ -347,6 +357,6 @@ The current working interpretation is: fetal-clip improves the CHD representatio
 | Final model result file/checkpoint | Final model |
 | Reliability-curve bins/plots/data | All methods |
 | Calibrated probabilities and calibrated ECE | LR baseline, MLP head, MC Dropout, Energy, VOS. Current prediction CSVs do not contain validation predictions/logits, so temperature scaling cannot be fit from saved CSVs without regenerating validation predictions from checkpoints. |
-| Saved FPR@95TPR scalar metrics | DINOv2 MC Dropout, Energy, VOS, EDL and fetal-clip LR/MC Dropout/VOS/EDL; values in this report are derived from prediction CSVs. Fetal-clip Energy has saved FPR@95TPR fields. |
-| Saved per-condition 3-fold OOD summary table | DINOv2 MC Dropout, Energy, VOS, EDL and fetal-clip LR/MC Dropout/VOS/EDL; values in this report are derived from prediction CSVs. Fetal-clip Energy has saved per-condition fields. |
+| Saved FPR@95TPR scalar metrics | DINOv2 MC Dropout, Energy, VOS, EDL and fetal-clip LR/probe, MLP, MC Dropout, VOS, EDL; values in this report are derived from prediction CSVs. Fetal-clip Energy has saved FPR@95TPR fields. |
+| Saved per-condition 3-fold OOD summary table | DINOv2 MC Dropout, Energy, VOS, EDL and fetal-clip LR/probe, MLP, MC Dropout, VOS, EDL; values in this report are derived from prediction CSVs. Fetal-clip Energy has saved per-condition fields. |
 | Combined ECE for non-EDL methods | LR baseline, MLP head, MC Dropout, Energy, VOS |

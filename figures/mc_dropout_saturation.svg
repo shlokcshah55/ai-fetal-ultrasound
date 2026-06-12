@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="640" viewBox="0 0 980 640">
+<style>
+text { font-family: Arial, Helvetica, sans-serif; }
+.title { font-size: 20px; font-weight: 700; fill: #111827; }
+.subtitle { font-size: 12px; fill: #475569; }
+.axis { font-size: 12px; fill: #334155; }
+.label { font-size: 13px; font-weight: 700; }
+.legend { font-size: 13px; fill: #1f2937; }
+.note { font-size: 11px; fill: #64748b; }
+</style>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="28.00" y="31.00" class="title">Figure 6. MC Dropout saturation by inference pass count (DINOv2)</text>
+<text x="28.00" y="50.00" class="subtitle">Both means are flat from T=10; the material change is T=1 to T=10, sharpest for calibration.</text>
+<text x="28.00" y="68.00" class="subtitle">Bands show fold standard deviation; the wide AUROC band reflects large fold variance.</text>
+<rect x="353.33" y="104.00" width="542.67" height="458.00" fill="#f8fafc" opacity="0.80"/>
+<line x1="353.33" y1="104.00" x2="353.33" y2="562.00" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 5"/>
+<text x="570.22" y="126.00" class="note" text-anchor="middle">saturation regime: T&gt;=10</text>
+<line x1="82" y1="562.00" x2="896" y2="562.00" stroke="#dbe3ef" stroke-width="1"/>
+<text x="70.00" y="566.00" class="axis" fill="#2563eb" text-anchor="end">0.30</text>
+<line x1="82" y1="480.21" x2="896" y2="480.21" stroke="#dbe3ef" stroke-width="1"/>
+<text x="70.00" y="484.21" class="axis" fill="#2563eb" text-anchor="end">0.40</text>
+<line x1="82" y1="398.43" x2="896" y2="398.43" stroke="#dbe3ef" stroke-width="1"/>
+<text x="70.00" y="402.43" class="axis" fill="#2563eb" text-anchor="end">0.50</text>
+<line x1="82" y1="316.64" x2="896" y2="316.64" stroke="#dbe3ef" stroke-width="1"/>
+<text x="70.00" y="320.64" class="axis" fill="#2563eb" text-anchor="end">0.60</text>
+<line x1="82" y1="234.86" x2="896" y2="234.86" stroke="#dbe3ef" stroke-width="1"/>
+<text x="70.00" y="238.86" class="axis" fill="#2563eb" text-anchor="end">0.70</text>
+<line x1="82" y1="153.07" x2="896" y2="153.07" stroke="#dbe3ef" stroke-width="1"/>
+<text x="70.00" y="157.07" class="axis" fill="#2563eb" text-anchor="end">0.80</text>
+<text x="908.00" y="566.00" class="axis" fill="#c2410c" text-anchor="start">0.00</text>
+<text x="908.00" y="461.91" class="axis" fill="#c2410c" text-anchor="start">0.10</text>
+<text x="908.00" y="357.82" class="axis" fill="#c2410c" text-anchor="start">0.20</text>
+<text x="908.00" y="253.73" class="axis" fill="#c2410c" text-anchor="start">0.30</text>
+<text x="908.00" y="149.64" class="axis" fill="#c2410c" text-anchor="start">0.40</text>
+<line x1="82.00" y1="104" x2="82.00" y2="562" stroke="#dbe3ef" stroke-width="1" stroke-dasharray="3 5"/>
+<line x1="82.00" y1="562" x2="82.00" y2="568" stroke="#475569" stroke-width="1"/>
+<text x="82.00" y="587.00" class="axis" text-anchor="middle">1</text>
+<line x1="353.33" y1="104" x2="353.33" y2="562" stroke="#dbe3ef" stroke-width="1" stroke-dasharray="3 5"/>
+<line x1="353.33" y1="562" x2="353.33" y2="568" stroke="#475569" stroke-width="1"/>
+<text x="353.33" y="587.00" class="axis" text-anchor="middle">10</text>
+<line x1="542.99" y1="104" x2="542.99" y2="562" stroke="#dbe3ef" stroke-width="1" stroke-dasharray="3 5"/>
+<line x1="542.99" y1="562" x2="542.99" y2="568" stroke="#475569" stroke-width="1"/>
+<text x="542.99" y="587.00" class="axis" text-anchor="middle">50</text>
+<line x1="624.67" y1="104" x2="624.67" y2="562" stroke="#dbe3ef" stroke-width="1" stroke-dasharray="3 5"/>
+<line x1="624.67" y1="562" x2="624.67" y2="568" stroke="#475569" stroke-width="1"/>
+<text x="624.67" y="587.00" class="axis" text-anchor="middle">100</text>
+<line x1="896.00" y1="104" x2="896.00" y2="562" stroke="#dbe3ef" stroke-width="1" stroke-dasharray="3 5"/>
+<line x1="896.00" y1="562" x2="896.00" y2="568" stroke="#475569" stroke-width="1"/>
+<text x="896.00" y="587.00" class="axis" text-anchor="middle">1000</text>
+<line x1="82" y1="104" x2="82" y2="562" stroke="#334155" stroke-width="1.2"/>
+<line x1="896" y1="104" x2="896" y2="562" stroke="#334155" stroke-width="1.2"/>
+<line x1="82" y1="562" x2="896" y2="562" stroke="#334155" stroke-width="1.2"/>
+<polygon points="82.00,322.72 353.33,130.35 542.99,131.10 624.67,131.12 896.00,130.97 896.00,493.46 624.67,493.56 542.99,492.55 353.33,490.20 82.00,380.84" fill="#2563eb" opacity="0.055"/>
+<polygon points="82.00,226.64 353.33,179.27 542.99,179.25 624.67,179.00 896.00,179.39 896.00,562.00 624.67,560.11 542.99,561.67 353.33,561.71 82.00,261.21" fill="#c2410c" opacity="0.065"/>
+<polyline points="82.00,351.78 353.33,310.27 542.99,311.82 624.67,312.34 896.00,312.22" fill="none" stroke="#2563eb" stroke-width="4.2" stroke-linejoin="round"/>
+<polyline points="82.00,243.92 353.33,370.49 542.99,370.46 624.67,369.55 896.00,372.09" fill="none" stroke="#c2410c" stroke-width="4.2" stroke-linejoin="round"/>
+<circle cx="82.00" cy="351.78" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="82.00" cy="243.92" r="5.5" fill="#c2410c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="353.33" cy="310.27" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="353.33" cy="370.49" r="5.5" fill="#c2410c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="542.99" cy="311.82" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="542.99" cy="370.46" r="5.5" fill="#c2410c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="624.67" cy="312.34" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="624.67" cy="369.55" r="5.5" fill="#c2410c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="896.00" cy="312.22" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="896.00" cy="372.09" r="5.5" fill="#c2410c" stroke="#ffffff" stroke-width="1.5"/>
+<text x="489.00" y="620.00" class="label" fill="#1f2937" text-anchor="middle">Inference pass count T (log scale)</text>
+<text x="24" y="333.00" class="label" fill="#2563eb" text-anchor="middle" transform="rotate(-90 24 333.00)">OOD AUROC</text>
+<text x="958" y="333.00" class="label" fill="#c2410c" text-anchor="middle" transform="rotate(90 958 333.00)">ID ECE</text>
+<rect x="90" y="484" width="306" height="58" rx="6" fill="#ffffff" opacity="0.92" stroke="#e2e8f0"/>
+<line x1="100" y1="504" x2="134" y2="504" stroke="#2563eb" stroke-width="4.2"/>
+<circle cx="117" cy="504" r="4.6" fill="#2563eb" stroke="#ffffff" stroke-width="1.2"/>
+<text x="144.00" y="508.00" class="legend">OOD AUROC +/- std</text>
+<line x1="100" y1="528" x2="134" y2="528" stroke="#c2410c" stroke-width="4.2"/>
+<circle cx="117" cy="528" r="4.6" fill="#c2410c" stroke="#ffffff" stroke-width="1.2"/>
+<text x="144.00" y="532.00" class="legend">ID ECE +/- std</text>
+<text x="896.00" y="598.00" class="note" text-anchor="end" fill="#64748b">T=1: deterministic MLP recomputed at subject level; T&gt;=10: saved MC Dropout folds.</text>
+</svg>
